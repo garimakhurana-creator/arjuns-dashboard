@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "seed": "node scripts/seed-demo.js"
+    "seed": "node scripts/seed-demo.js",
+    "evaluate": "node scripts/evaluate-folder.js"
   },
   "license": "ISC",
   "type": "commonjs",
@@ -14,7 +15,7 @@
     "@anthropic-ai/sdk": "^0.128.0",
     "express": "^5.2.1",
     "multer": "^2.4.0",
-    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^4.10.38",
     "pg": "^8.23.0",
     "zod": "^4.6.5"
   },

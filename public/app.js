@@ -67,12 +67,13 @@ function renderStats(s) {
 
 const STATE_LABEL = {
   DRAFT: ['Draft', 'draft'], QUEUED: ['Queued', 'draft'], SENT: ['Sent', 'ok'], SCHEDULED: ['Scheduled', 'ok'],
+  HELD: ['Held · other role or duplicate', 'draft'],
 };
 
 function renderRow(r) {
   const node = $('#row-tpl').content.firstElementChild.cloneNode(true);
   const isInvite = r.email.type === 'INTERVIEW_INVITE';
-  const done = ['SENT', 'SCHEDULED'].includes(r.email_status);
+  const done = ['SENT', 'SCHEDULED', 'HELD'].includes(r.email_status);
 
   $('.q-name', node).textContent = r.candidate_name;
   $('.q-meta', node).textContent = `${r.candidate_id} · ${r.selected_role}`;

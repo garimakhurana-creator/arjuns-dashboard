@@ -4,10 +4,11 @@ const path = require('path');
 
 require('./lib/env').loadDotEnv();
 
-const pdfParse = require('pdf-parse/lib/pdf-parse.js');
+const { pdfToText } = require('./lib/pdf');
 const store = require('./lib/store');
 const { evaluateCv } = require('./lib/pipeline');
 const { sendEmail } = require('./lib/resend');
+const { deliverEmail } = require('./lib/dispatch');
 const llm = require('./lib/llm');
 
 const app = express();
@@ -21,7 +22,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 async function fileToText(file) {
   const name = file.originalname.toLowerCase();
   if (name.endsWith('.pdf') || file.mimetype === 'application/pdf') {
-    return (await pdfParse(file.buffer)).text;
+    return pdfToText(file.buffer);
   }
   if (/\.(txt|md|text)$/.test(name) || file.mimetype.startsWith('text/')) {
     return file.buffer.toString('utf-8');
@@ -101,7 +102,7 @@ app.post('/api/candidates', upload.array('cv'), async (req, res) => {
       const record = await evaluateCv({
         rawText,
         roleCode: role,
-        overrides,
+        overrides: { ...overrides, filename: file.originalname },
         candidateId: await store.nextCandidateId(),
         calendlyUrl: process.env.CALENDLY_URL,
       });
@@ -191,30 +192,6 @@ app.patch('/api/candidates/:id/email', async (req, res) => {
   if (!rec) return res.status(404).json({ error: 'Candidate not found.' });
   res.json({ ok: true });
 });
-
-// Sends the candidate's current draft through Resend and records the outcome.
-// Invites go out now; rejections are scheduled REJECTION_DELAY_HOURS ahead so
-// they don't feel automated. Throws on failure after logging it.
-async function deliverEmail(candidateId) {
-  const rec = await store.get(candidateId);
-  const draft = rec.deliverables.resend_email_draft;
-  const isInvite = draft.type === 'INTERVIEW_INVITE';
-  const scheduledAt = isInvite ? null : new Date(Date.now() + REJECTION_DELAY_HOURS * 3600 * 1000).toISOString();
-  try {
-    const result = await sendEmail({ to: draft.recipient_email, subject: draft.subject, text: draft.body_text, scheduledAt });
-    await store.update(candidateId, r => {
-      if (isInvite) r.status = 'INVITED';
-      r.email_status = isInvite ? 'SENT' : 'SCHEDULED';
-      r.email_history.push({ type: draft.type, resend_id: result.id, ...(scheduledAt ? { scheduled_at: scheduledAt } : {}), at: new Date().toISOString() });
-    });
-    return { resend_id: result.id, scheduled_at: scheduledAt };
-  } catch (err) {
-    await store.update(candidateId, r => {
-      r.email_history.push({ type: draft.type, error: err.message, at: new Date().toISOString() });
-    });
-    throw err;
-  }
-}
 
 app.post('/api/candidates/:id/send', async (req, res) => {
   const rec = await store.get(req.params.id);

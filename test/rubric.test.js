@@ -111,3 +111,14 @@ test('calibration treats Vikram Nair and Lavanya Iyer as misfits', () => {
   assert.ok(misfits.includes('Vikram Nair') && misfits.includes('Lavanya Iyer'));
   assert.ok(!CALIBRATION.split('MISFITS')[0].includes('Lavanya Iyer ('));
 });
+
+test('headings and job titles are never taken as the candidate name', () => {
+  const { extractAndRedact, nameFromFilename } = require('../lib/pii');
+  const cv = 'Associate Product Manager\n| | |\nPROFESSIONAL SUMMARY\nProduct manager who led carrier integrations.';
+  const { pii, redactedText } = extractAndRedact(cv, { filename: '04_arjun_verma.pdf' });
+  assert.strictEqual(pii.name, 'Arjun Verma');
+  assert.ok(redactedText.includes('Product Manager'), 'job title must survive redaction');
+  assert.strictEqual(extractAndRedact('Professional Summary\nCore Skills\n').pii.name, 'Candidate');
+  assert.strictEqual(nameFromFilename('spm_16_siddharth_rao.pdf'), 'Siddharth Rao');
+  assert.strictEqual(nameFromFilename('scan0001.pdf'), null);
+});
