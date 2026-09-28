@@ -26,5 +26,5 @@ npm start              # http://localhost:3500
 
 - **LLM:** Gemini when `GEMINI_API_KEY` is set, otherwise Claude (`ANTHROPIC_API_KEY`). Set `LLM_PROVIDER` to force one.
 - **Email:** `RESEND_API_KEY`, plus `RESEND_FROM` on a domain verified in Resend.
-- **Storage:** Supabase when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set; run `supabase/schema.sql` in the project's SQL editor first. Otherwise candidates go to `data/candidates.json`.
+- **Storage:** Neon Postgres when `DATABASE_URL` is set; the `kargo_candidates` table (`db/schema.sql`) is created on first run. Otherwise candidates go to `data/candidates.json`.
 - **Demo data:** `npm run seed` loads 3 demo candidates. `npm test` runs the scoring and PII tests.

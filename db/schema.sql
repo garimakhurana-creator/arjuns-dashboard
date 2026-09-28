@@ -1,7 +1,7 @@
--- Kargo hiring: candidate evaluations and audit log.
--- Run once in the Supabase SQL editor for the project in SUPABASE_URL.
+-- Kargo hiring: candidate evaluations and audit log (Neon / Postgres).
+-- Applied automatically on server start (lib/store.js). Safe to re-run.
 
-create table if not exists public.kargo_candidates (
+create table if not exists kargo_candidates (
   candidate_id      text primary key,
   candidate_name    text not null,
   role_code         text not null check (role_code in ('PM', 'SPM')),
@@ -16,9 +16,5 @@ create table if not exists public.kargo_candidates (
   updated_at        timestamptz not null default now()
 );
 
-create index if not exists kargo_candidates_category_idx on public.kargo_candidates (category);
-create index if not exists kargo_candidates_email_status_idx on public.kargo_candidates (email_status);
-
--- Candidate CV data is personal information. RLS on with no policies means
--- only the server's service-role key can read or write; the anon key cannot.
-alter table public.kargo_candidates enable row level security;
+create index if not exists kargo_candidates_category_idx on kargo_candidates (category);
+create index if not exists kargo_candidates_email_status_idx on kargo_candidates (email_status);
