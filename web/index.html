@@ -56,6 +56,13 @@
       </form>
 
       <h2 class="section-title">Shortlist <span class="muted small-note">High potential, plus medium candidates you reconsider</span></h2>
+      <div class="filter-bar" data-filter="shortlist">
+        <label>Minimum match
+          <input type="range" min="0" max="100" step="5" value="0" class="filter-min" aria-label="Minimum match percentage for the shortlist" />
+          <output class="filter-val">0%</output>
+        </label>
+        <span class="muted filter-showing"></span>
+      </div>
       <div id="candidates"></div>
     </section>
 
@@ -67,6 +74,13 @@
             <p class="muted section-note">Open the detailed summary, send a rejection mail, or reconsider to move them to the Shortlist.</p>
           </div>
           <button class="ghost small section-toggle" type="button" aria-expanded="true" aria-controls="medium-list">Close</button>
+        </div>
+        <div class="filter-bar section-body" data-filter="medium">
+          <label>Minimum match
+            <input type="range" min="0" max="100" step="5" value="0" class="filter-min" aria-label="Minimum match percentage for medium-potential candidates" />
+            <output class="filter-val">0%</output>
+          </label>
+          <span class="muted filter-showing"></span>
         </div>
         <div id="medium-list" class="rows section-body"></div>
       </div>

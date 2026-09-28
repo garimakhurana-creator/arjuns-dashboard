@@ -222,7 +222,8 @@ async function refreshReview() {
   const [{ medium, rejections }, { stats }] = await Promise.all([api('/api/review'), api('/api/dashboard')]);
   renderStats(stats);
   const empty = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
-  $('#medium-list').replaceChildren(...(medium.length ? medium.map(renderRow) : [empty('No medium-potential candidates waiting.')]));
+  loaded.medium = medium;
+  renderMedium();
   $('#rejection-list').replaceChildren(...(rejections.length ? rejections.map(renderRow) : [empty('No rejection emails.')]));
   const waiting = rejections.filter(r => r.email_status === 'QUEUED').length;
   $('#medium-count').textContent = `(${medium.length})`;
@@ -360,15 +361,59 @@ function renderCard(c, { detail = false } = {}) {
   return node;
 }
 
+// Minimum-match filters for the Shortlist and Medium list; remembered per browser.
+const filters = { shortlist: 0, medium: 0 };
+const loaded = { shortlist: [], medium: [] };
+
+function applyFilter(name, items, matchOf) {
+  const min = filters[name];
+  const shown = items.filter(x => matchOf(x) >= min);
+  const bar = document.querySelector(`[data-filter=${name}]`);
+  $('.filter-showing', bar).textContent = items.length
+    ? (min ? `Showing ${shown.length} of ${items.length}` : `${items.length} candidate${items.length === 1 ? '' : 's'}`)
+    : '';
+  return shown;
+}
+
+function renderShortlist() {
+  const list = $('#candidates');
+  const shown = applyFilter('shortlist', loaded.shortlist, c => c.scoring.match_score_pct);
+  if (!loaded.shortlist.length) {
+    list.innerHTML = '<p class="empty muted">No shortlisted candidates yet. Medium candidates you reconsider in the Review queue also appear here.</p>';
+  } else if (!shown.length) {
+    list.innerHTML = `<p class="empty muted">No shortlisted candidates at ${filters.shortlist}% match or above.</p>`;
+  } else {
+    list.replaceChildren(...shown.map(c => renderCard(c)));
+  }
+}
+
+function renderMedium() {
+  const empty = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
+  const shown = applyFilter('medium', loaded.medium, r => r.match_score_pct);
+  $('#medium-list').replaceChildren(...(shown.length ? shown.map(renderRow)
+    : [empty(loaded.medium.length ? `No medium-potential candidates at ${filters.medium}% match or above.` : 'No medium-potential candidates waiting.')]));
+}
+
+document.querySelectorAll('.filter-bar').forEach(bar => {
+  const name = bar.dataset.filter;
+  const input = $('.filter-min', bar);
+  const out = $('.filter-val', bar);
+  try { filters[name] = Number(localStorage.getItem(`kargo.filter.${name}`)) || 0; } catch {}
+  input.value = filters[name];
+  out.textContent = `${filters[name]}%`;
+  input.addEventListener('input', () => {
+    filters[name] = Number(input.value);
+    out.textContent = `${filters[name]}%`;
+    try { localStorage.setItem(`kargo.filter.${name}`, String(filters[name])); } catch {}
+    (name === 'shortlist' ? renderShortlist : renderMedium)();
+  });
+});
+
 async function refresh() {
   const { candidates, stats } = await api('/api/dashboard');
   renderStats(stats);
-  const list = $('#candidates');
-  if (!candidates.length) {
-    list.innerHTML = '<p class="empty muted">No shortlisted candidates yet. Medium candidates you reconsider in the Review queue also appear here.</p>';
-    return;
-  }
-  list.replaceChildren(...candidates.map(renderCard));
+  loaded.shortlist = candidates;
+  renderShortlist();
 }
 
 async function refreshAudit() {
