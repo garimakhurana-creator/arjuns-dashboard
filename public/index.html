@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kargo Hiring</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo">K</span>
+      <div>
+        <h1>Kargo Hiring</h1>
+        <p class="tag">AI finds the signal. Arjun makes the decision. Automation handles everything after.</p>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-view="dashboard">Shortlist</button>
+      <button class="tab" data-view="review">Review queue <span class="badge" id="review-badge" hidden></span></button>
+      <button class="tab" data-view="audit">Audit log</button>
+    </nav>
+  </header>
+
+  <div id="config-warning" class="warn" hidden></div>
+
+  <main>
+    <section id="view-dashboard">
+      <div class="stats" id="stats"></div>
+
+      <form id="upload" class="panel upload">
+        <h2>Evaluate CVs</h2>
+        <div class="row">
+          <label>Role
+            <select name="role" required>
+              <option value="SPM">Senior Product Manager</option>
+              <option value="PM">Product Manager</option>
+            </select>
+          </label>
+          <label class="grow">CV files (PDF or .txt, multiple allowed)
+            <input type="file" name="cv" accept=".pdf,.txt,.md,application/pdf,text/plain" multiple required />
+          </label>
+        </div>
+        <details>
+          <summary>Single CV: override name / email</summary>
+          <div class="row">
+            <label class="grow">Name <input name="name" placeholder="Detected from CV if blank" /></label>
+            <label class="grow">Email <input name="email" type="email" placeholder="Detected from CV if blank" /></label>
+          </div>
+        </details>
+        <div class="row end">
+          <span id="upload-status" class="muted"></span>
+          <button type="submit" class="primary" id="upload-btn">Evaluate</button>
+        </div>
+        <ul id="upload-results" class="results"></ul>
+      </form>
+
+      <h2 class="section-title">Shortlist <span class="muted small-note">High potential, with full interview briefs</span></h2>
+      <div id="candidates"></div>
+    </section>
+
+    <section id="view-review" hidden>
+      <div class="panel">
+        <h2>Medium potential <span class="muted small-note">Invite or reject in one click. The full brief is in the audit log.</span></h2>
+        <div id="medium-list" class="rows"></div>
+      </div>
+
+      <div class="panel">
+        <div class="queue-head">
+          <div>
+            <h2>Rejection emails</h2>
+            <p class="muted" id="queue-note"></p>
+          </div>
+          <button id="batch-btn" class="secondary">Schedule all waiting</button>
+        </div>
+        <div id="rejection-list" class="rows"></div>
+      </div>
+    </section>
+
+    <section id="view-audit" hidden>
+      <div class="panel">
+        <h2>Audit log</h2>
+        <p class="muted">Every evaluated candidate, including auto-rejected ones, with full scoring evidence and rationale.</p>
+        <div class="table-wrap">
+          <table id="audit-table">
+            <thead><tr><th>ID</th><th>Candidate</th><th>Role</th><th>Match</th><th>Risk</th><th>Category</th><th>Status</th><th>Email</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <template id="row-tpl">
+    <div class="qrow">
+      <div class="q-main">
+        <div class="q-top">
+          <b class="q-name"></b>
+          <span class="muted q-meta"></span>
+          <span class="chip q-cat"></span>
+          <span class="q-num"><b class="q-match"></b> match · <b class="q-risk"></b> risk</span>
+        </div>
+        <p class="q-reason"></p>
+        <div class="q-flags"></div>
+      </div>
+      <div class="q-actions">
+        <span class="chip q-state"></span>
+        <button class="ghost small q-toggle">Email</button>
+        <button class="ghost small q-reject" hidden>Reject</button>
+        <button class="primary small q-send"></button>
+      </div>
+      <div class="q-email" hidden>
+        <label>To <input class="e-to" type="email" /></label>
+        <label>Subject <input class="e-subject" /></label>
+        <label>Body <textarea class="e-body" rows="7"></textarea></label>
+        <p class="q-status muted"></p>
+      </div>
+    </div>
+  </template>
+
+  <template id="card-tpl">
+    <article class="card">
+      <header class="card-head">
+        <div>
+          <h3 class="name"></h3>
+          <p class="meta muted"></p>
+        </div>
+        <div class="scores">
+          <span class="chip cat"></span>
+          <div class="score"><b class="match"></b><small>match</small></div>
+          <div class="score"><b class="risk"></b><small>risk</small></div>
+        </div>
+      </header>
+      <p class="reason"></p>
+      <div class="grid">
+        <div>
+          <h4>Rubric</h4>
+          <ul class="params"></ul>
+          <h4>Risk flags</h4>
+          <ul class="flags"></ul>
+        </div>
+        <div>
+          <h4>Interview brief</h4>
+          <p class="summary"></p>
+          <p class="why"></p>
+          <div class="two">
+            <div><h5>Strengths</h5><ul class="strengths"></ul></div>
+            <div><h5>Risks</h5><ul class="risks"></ul></div>
+          </div>
+          <h5>Probe in the interview</h5>
+          <ol class="probes"></ol>
+        </div>
+      </div>
+      <div class="email">
+        <h4>Invite draft <span class="email-state chip"></span></h4>
+        <label>To <input class="e-to" type="email" /></label>
+        <label>Subject <input class="e-subject" /></label>
+        <label>Body <textarea class="e-body" rows="9"></textarea></label>
+        <div class="row end">
+          <span class="card-status muted"></span>
+          <button class="pass ghost">Pass</button>
+          <button class="send primary">Send invite</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

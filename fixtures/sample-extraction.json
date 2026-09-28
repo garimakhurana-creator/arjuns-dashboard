@@ -1,0 +1,45 @@
+{
+  "candidate_id": "CAND-2026-0891",
+  "extracted_candidate_data": {
+    "profile": {
+      "full_name": "Candidate Name",
+      "target_role": "Senior Product Manager",
+      "total_years_experience": 6.5,
+      "total_pm_experience": 5.0,
+      "current_company": "Logistics Company X",
+      "current_title": "Product Manager - Carrier Integrations"
+    },
+    "pedigree_classification": {
+      "has_early_stage_0_to_1": true,
+      "has_enterprise_only_background": false,
+      "company_types_detected": ["EARLY_STAGE_0_1", "LOGISTICS_DOMAIN"]
+    },
+    "technical_and_integration_signals": {
+      "carrier_api_experience": true,
+      "edi_or_wms_tms_integrations": true,
+      "build_vs_buy_decisions_mentioned": true,
+      "raw_technical_evidence": [
+        "Built carrier dispatch APIs handling 10k+ daily shipments",
+        "Integrated EDI 214 status webhooks with enterprise TMS"
+      ]
+    },
+    "domain_and_operational_signals": {
+      "has_freight_logistics_experience": true,
+      "ground_level_discovery_evidence": true,
+      "raw_domain_evidence": [
+        "Spent 2 weeks on-site shadowing freight dispatchers at JNPT port yard"
+      ]
+    },
+    "execution_and_scrappiness_signals": {
+      "velocity_indicators": [
+        "Shipped 0-to-1 tracking module in 6 weeks without dedicated designer"
+      ],
+      "b2c_consumer_focus_only": false
+    },
+    "extracted_gaps_and_risks": {
+      "missing_impact_metrics": false,
+      "vague_ownership_descriptions": false,
+      "detected_risk_flags": ["INFORMATION_GAP_RISK"]
+    }
+  }
+}
