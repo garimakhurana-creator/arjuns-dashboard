@@ -67,6 +67,7 @@ function dashboardView(r) {
     status: r.status,
     email_status: r.email_status,
     email_history: r.email_history,
+    shortlisted_by_founder: Boolean(r.shortlisted_by_founder),
   };
 }
 
@@ -166,7 +167,8 @@ app.post('/api/candidates', upload.array('cv'), async (req, res) => {
 app.get('/api/dashboard', async (req, res) => {
   const all = await currentRecords();
   const high = all
-    .filter(r => r.categorization.category === 'HIGH_POTENTIAL' && r.status !== 'PASSED_BY_FOUNDER')
+    // High potential, plus Medium candidates Arjun chose to reconsider.
+    .filter(r => (r.categorization.category === 'HIGH_POTENTIAL' || r.shortlisted_by_founder) && r.status !== 'PASSED_BY_FOUNDER')
     .sort(byScore)
     .map(dashboardView);
 
@@ -177,7 +179,7 @@ app.get('/api/dashboard', async (req, res) => {
       high: all.filter(r => r.categorization.category === 'HIGH_POTENTIAL').length,
       medium: all.filter(r => r.categorization.category === 'MEDIUM_POTENTIAL').length,
       auto_rejected: all.filter(r => r.categorization.category === 'LOW_POTENTIAL').length,
-      medium_awaiting: all.filter(r => r.categorization.category === 'MEDIUM_POTENTIAL' && r.status === 'AWAITING_FOUNDER').length,
+      medium_awaiting: all.filter(r => r.categorization.category === 'MEDIUM_POTENTIAL' && r.status === 'AWAITING_FOUNDER' && !r.shortlisted_by_founder).length,
       rejections_queued: all.filter(r => r.email_status === 'QUEUED').length,
       invites_sent: all.filter(r => r.status === 'INVITED').length,
     },
@@ -190,7 +192,7 @@ app.get('/api/review', async (req, res) => {
   const all = await currentRecords();
   res.json({
     medium: all
-      .filter(r => r.categorization.category === 'MEDIUM_POTENTIAL' && !isRejection(r))
+      .filter(r => r.categorization.category === 'MEDIUM_POTENTIAL' && !isRejection(r) && !r.shortlisted_by_founder)
       .sort(byScore)
       .map(conciseView),
     rejections: all
@@ -231,6 +233,27 @@ app.post('/api/candidates/:id/send', async (req, res) => {
 
 // Arjun decides not to proceed with a surfaced candidate: swap in the
 // pre-written rejection and add it to the delayed-rejection queue.
+// Full detail for one candidate (the Review queue's "Open detailed summary").
+app.get('/api/candidates/:id', async (req, res) => {
+  const rec = await store.get(req.params.id);
+  if (!rec) return res.status(404).json({ error: 'Candidate not found.' });
+  res.json({ ...dashboardView(rec), full_evaluation_rationale: rec.audit_log.full_evaluation_rationale });
+});
+
+// Arjun moves a Medium candidate from the Review queue onto the Shortlist.
+app.post('/api/candidates/:id/reconsider', async (req, res) => {
+  let error = null;
+  const rec = await store.update(req.params.id, r => {
+    if (r.categorization.category !== 'MEDIUM_POTENTIAL') { error = 'Only medium-potential candidates can be reconsidered.'; return; }
+    if (r.status !== 'AWAITING_FOUNDER') { error = 'This candidate has already been decided.'; return; }
+    r.shortlisted_by_founder = true;
+    r.founder_decision = { decision: 'RECONSIDER', at: new Date().toISOString() };
+  });
+  if (!rec) return res.status(404).json({ error: 'Candidate not found.' });
+  if (error) return res.status(409).json({ error });
+  res.json({ ok: true });
+});
+
 app.post('/api/candidates/:id/pass', async (req, res) => {
   const rec = await store.update(req.params.id, r => {
     if (['SENT', 'SCHEDULED'].includes(r.email_status)) return;

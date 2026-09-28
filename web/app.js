@@ -79,15 +79,20 @@ function renderStats(s) {
   badge.textContent = pending;
 }
 
-const STATE_LABEL = {
-  DRAFT: ['Draft', 'draft'], QUEUED: ['Queued', 'draft'], SENT: ['Sent', 'ok'], SCHEDULED: ['Scheduled', 'ok'],
-  HELD: ['Held · other role or duplicate', 'draft'],
-};
+const fmtDate = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+
+// Plain-language state of a rejection email.
+function rejectionState(r) {
+  const ev = r.last_email_event;
+  if (r.email_status === 'SENT') return ['Sent', 'ok'];
+  if (r.email_status === 'SCHEDULED') return [ev && ev.scheduled_at ? `Scheduled · arrives ${fmtDate(ev.scheduled_at)}` : 'Scheduled', 'ok'];
+  if (r.email_status === 'HELD') return ['No email needed · in play for the other role', 'draft'];
+  return ['Not sent', 'draft'];
+}
 
 function renderRow(r) {
   const node = $('#row-tpl').content.firstElementChild.cloneNode(true);
-  const isInvite = r.email.type === 'INTERVIEW_INVITE';
-  const done = ['SENT', 'SCHEDULED', 'HELD'].includes(r.email_status);
+  const isMedium = r.email.type === 'INTERVIEW_INVITE';
 
   $('.q-name', node).textContent = r.candidate_name;
   $('.q-meta', node).textContent = `${r.candidate_id} · ${r.selected_role}`;
@@ -99,94 +104,125 @@ function renderRow(r) {
   $('.q-reason', node).textContent = r.reason;
   const flags = $('.q-flags', node);
   for (const f of r.risk_flags) {
-    const s = document.createElement('span');
-    s.className = 'flag';
-    s.textContent = FLAG_LABEL[f] || f;
-    flags.appendChild(s);
+    const el = document.createElement('span');
+    el.className = 'flag';
+    el.textContent = FLAG_LABEL[f] || f;
+    flags.appendChild(el);
   }
 
-  const [stateText, stateCls] = STATE_LABEL[r.email_status] || [r.email_status, 'draft'];
+  const status = $('.q-status', node);
+  const say = text => { status.hidden = !text; status.textContent = text; };
+  const primary = $('.q-primary', node);
+  const secondary = $('.q-secondary', node);
+
+  if (isMedium) {
+    secondary.hidden = false;
+    secondary.textContent = 'Open detailed summary';
+    secondary.addEventListener('click', () => openDetail(r.candidate_id));
+    primary.hidden = false;
+    primary.textContent = 'Reconsider';
+    primary.addEventListener('click', async () => {
+      primary.disabled = true;
+      try {
+        await reconsider(r.candidate_id);
+      } catch (err) {
+        say(err.message);
+        primary.disabled = false;
+      }
+    });
+    return node;
+  }
+
+  // Rejection row: a status, and one button while the email hasn't gone out.
+  const [stateText, stateCls] = rejectionState(r);
   const state = $('.q-state', node);
-  state.textContent = r.email_status === 'SCHEDULED' && r.last_email_event && r.last_email_event.scheduled_at
-    ? `${r.category === 'LOW_POTENTIAL' ? 'Auto-scheduled · ' : ''}arrives ${new Date(r.last_email_event.scheduled_at).toLocaleDateString()}`
-    : r.category === 'LOW_POTENTIAL' && r.email_status === 'QUEUED'
-      ? (r.last_email_event && r.last_email_event.error ? 'Send failed' : 'Not sent')
-      : stateText;
+  state.hidden = false;
+  state.textContent = stateText;
   state.classList.add(stateCls);
 
-  const to = $('.e-to', node), subj = $('.e-subject', node), body = $('.e-body', node);
-  const status = $('.q-status', node);
-  to.value = r.email.recipient_email || '';
-  subj.value = r.email.subject;
-  body.value = r.email.body_text;
-  const emailBox = $('.q-email', node);
-  $('.q-toggle', node).addEventListener('click', () => (emailBox.hidden = !emailBox.hidden));
-
-  // Low-potential rejections go out automatically; the button only appears
-  // as a retry if that automatic send failed.
-  const isAuto = r.category === 'LOW_POTENTIAL';
-  const send = $('.q-send', node);
-  send.textContent = isInvite ? 'Invite' : isAuto ? 'Retry' : 'Approve';
-  send.hidden = done;
-  if (isAuto && r.email_status === 'QUEUED' && r.last_email_event && r.last_email_event.error) {
-    status.textContent = `Automatic send failed: ${r.last_email_event.error}`;
+  if (r.email_status === 'QUEUED') {
+    primary.hidden = false;
+    primary.textContent = 'Send rejection mail';
+    primary.addEventListener('click', async () => {
+      const to = r.email.recipient_email;
+      if (!to) return say('No email address found on this CV, so the rejection cannot be sent.');
+      const ok = confirm(`Send a rejection mail to ${r.candidate_name} (${to})?\n\nSubject: ${r.email.subject}\n\nIt will arrive ${config.rejection_delay_hours} hours from now.`);
+      if (!ok) return;
+      primary.disabled = true;
+      say('Sending…');
+      try {
+        await api(`/api/candidates/${r.candidate_id}/send`, { method: 'POST' });
+        await refreshReview();
+      } catch (err) {
+        say(`Couldn't send it: ${err.message}`);
+        primary.disabled = false;
+      }
+    });
   }
-  const reject = $('.q-reject', node);
-  reject.hidden = !isInvite;
-  if (done) {
-    [to, subj, body].forEach(el => (el.disabled = true));
-    send.disabled = reject.disabled = true;
-  }
-
-  send.addEventListener('click', async () => {
-    if (!to.value) { emailBox.hidden = false; status.textContent = 'Add a recipient email first.'; return; }
-    send.disabled = true;
-    try {
-      await api(`/api/candidates/${r.candidate_id}/email`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipient_email: to.value, subject: subj.value, body_text: body.value }),
-      });
-      await api(`/api/candidates/${r.candidate_id}/send`, { method: 'POST' });
-      await refreshReview();
-    } catch (err) {
-      emailBox.hidden = false;
-      status.textContent = err.message;
-      send.disabled = false;
-    }
-  });
-
-  reject.addEventListener('click', async () => {
-    try {
-      await api(`/api/candidates/${r.candidate_id}/pass`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      await refreshReview();
-    } catch (err) {
-      emailBox.hidden = false;
-      status.textContent = err.message;
-    }
-  });
-
   return node;
 }
 
-async function refreshReview() {
-  const [{ medium, rejections, rejection_delay_hours }, { stats }] = await Promise.all([api('/api/review'), api('/api/dashboard')]);
-  renderStats(stats);
-  const empty = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
-  $('#medium-list').replaceChildren(...(medium.length ? medium.map(renderRow) : [empty('No medium-potential candidates.')]));
-  $('#rejection-list').replaceChildren(...(rejections.length ? rejections.map(renderRow) : [empty('No rejection emails.')]));
-  const queued = rejections.filter(r => r.email_status === 'QUEUED').length;
-  $('#queue-note').textContent = `Low-potential rejections are scheduled automatically. Rejections for candidates you pass on wait for your approval. All arrive ${rejection_delay_hours}h after scheduling. ${queued} waiting.`;
-  $('#batch-btn').disabled = queued === 0;
+async function reconsider(candidateId) {
+  await api(`/api/candidates/${candidateId}/reconsider`, { method: 'POST' });
+  const dialog = $('#detail-dialog');
+  if (dialog.open) dialog.close();
+  await refreshReview();
 }
 
-function renderCard(c) {
+// Full evaluation for a Medium candidate, in a dialog over the Review queue.
+async function openDetail(candidateId) {
+  const dialog = $('#detail-dialog');
+  const body = $('#detail-body');
+  $('#detail-title').textContent = 'Candidate summary';
+  body.replaceChildren(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'Loading…' }));
+  dialog.showModal();
+  try {
+    const c = await api(`/api/candidates/${candidateId}`);
+    $('#detail-title').textContent = c.candidate_name;
+    body.replaceChildren(renderCard(c, { detail: true }));
+  } catch (err) {
+    body.replaceChildren(Object.assign(document.createElement('p'), { className: 'err', textContent: err.message }));
+  }
+}
+
+async function refreshReview() {
+  const [{ medium, rejections }, { stats }] = await Promise.all([api('/api/review'), api('/api/dashboard')]);
+  renderStats(stats);
+  const empty = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
+  $('#medium-list').replaceChildren(...(medium.length ? medium.map(renderRow) : [empty('No medium-potential candidates waiting.')]));
+  $('#rejection-list').replaceChildren(...(rejections.length ? rejections.map(renderRow) : [empty('No rejection emails.')]));
+  const waiting = rejections.filter(r => r.email_status === 'QUEUED').length;
+  $('#queue-note').textContent = waiting
+    ? `${waiting} not sent yet. Each arrives ${config.rejection_delay_hours} hours after you send it.`
+    : `All rejection mails are sent or scheduled. Each arrives ${config.rejection_delay_hours} hours after sending.`;
+  $('#batch-btn').disabled = waiting === 0;
+}
+
+function renderCard(c, { detail = false } = {}) {
   const node = $('#card-tpl').content.firstElementChild.cloneNode(true);
   const cat = c.categorization.category;
   node.classList.add(cat === 'HIGH_POTENTIAL' ? 'high' : 'medium');
+  if (detail) {
+    // Read-only summary: no email editor; full reasoning and Reconsider instead.
+    node.classList.add('in-detail');
+    $('.email', node).remove();
+    $('.rationale-block', node).hidden = false;
+    $('.rationale-text', node).textContent = c.full_evaluation_rationale || '';
+    $('.detail-actions', node).hidden = false;
+    const btn = $('.detail-reconsider', node);
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await reconsider(c.candidate_id);
+      } catch (err) {
+        $('.detail-status', node).textContent = err.message;
+        btn.disabled = false;
+      }
+    });
+  }
   $('.name', node).textContent = c.candidate_name;
   $('.meta', node).textContent = `${c.candidate_id} · ${c.selected_role} · closest to: ${c.categorization.closest_historical_match}`;
-  $('.cat', node).textContent = CAT_LABEL[cat];
+  $('.cat', node).textContent = c.shortlisted_by_founder ? 'Medium · reconsidered' : CAT_LABEL[cat];
   $('.match', node).textContent = `${c.scoring.match_score_pct}%`;
   $('.risk', node).textContent = c.scoring.total_risk_score;
   $('.reason', node).textContent = c.categorization.recommendation_reason;
@@ -220,6 +256,8 @@ function renderCard(c) {
   b.key_strengths.forEach(s => $('.strengths', node).appendChild(li(s)));
   b.risk_factors.forEach(s => $('.risks', node).appendChild(li(s)));
   b.interview_probes.forEach(s => $('.probes', node).appendChild(li(s)));
+
+  if (detail) return node;
 
   const d = c.deliverables.resend_email_draft;
   const to = $('.e-to', node), subj = $('.e-subject', node), body = $('.e-body', node);
@@ -277,7 +315,7 @@ async function refresh() {
   renderStats(stats);
   const list = $('#candidates');
   if (!candidates.length) {
-    list.innerHTML = '<p class="empty muted">No high-potential candidates yet. Medium candidates and rejections are in the Review queue tab.</p>';
+    list.innerHTML = '<p class="empty muted">No shortlisted candidates yet. Medium candidates you reconsider in the Review queue also appear here.</p>';
     return;
   }
   list.replaceChildren(...candidates.map(renderCard));
@@ -352,14 +390,18 @@ $('#upload').addEventListener('submit', async e => {
   }
 });
 
+$('#detail-close').addEventListener('click', () => $('#detail-dialog').close());
+$('#detail-dialog').addEventListener('click', e => { if (e.target.id === 'detail-dialog') e.target.close(); });
+
 $('#batch-btn').addEventListener('click', async () => {
   const btn = $('#batch-btn');
+  if (!confirm('Send every rejection mail that has not gone out yet?')) return;
   btn.disabled = true;
   try {
     const r = await api('/api/rejections/send-batch', { method: 'POST' });
     await refreshReview();
-    $('#queue-note').textContent = `Scheduled ${r.scheduled} for ${new Date(r.scheduled_at).toLocaleString()}.` +
-      (r.failures.length ? ` ${r.failures.length} failed: ${r.failures[0].error}` : '');
+    $('#queue-note').textContent = (r.scheduled ? `Sent ${r.scheduled} rejection mail${r.scheduled === 1 ? '' : 's'}; they arrive ${fmtDate(r.scheduled_at)}.` : '') +
+      (r.failures.length ? ` ${r.failures.length} couldn't be sent: ${r.failures[0].error}` : '');
   } catch (err) {
     $('#queue-note').textContent = err.message;
     btn.disabled = false;

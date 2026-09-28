@@ -58,8 +58,8 @@ const demos = [
       parameter_scores: {
         p1_operations_immersion: { score: 4, evidence: 'Ran 30+ interviews with warehouse supervisors.' },
         p2_ship_and_kill: { score: 3, evidence: 'Shipped features at a Series C company; no 0-to-1 builds.' },
-        p3_unforced_adoption: { score: 4, evidence: 'Ran two-week sprints with a 6-engineer squad.' },
-        p4_engineering_trust: { score: 3, evidence: 'Mentions a 22% usage lift, but it came from a mandated rollout.' },
+        p3_unforced_adoption: { score: 3, evidence: 'Mentions a 22% usage lift, but it came from a mandated rollout.' },
+        p4_engineering_trust: { score: 4, evidence: 'Ran two-week sprints with a 6-engineer squad; writes the specs engineering works from.' },
       },
       active_risk_flags: [{ flag: 'NO_OPERATIONS_EXPOSURE_RISK', evidence: 'Primarily horizontal SaaS; logistics exposure limited to one customer segment.' }],
       closest_historical_match: 'Lavanya Iyer (top performer)',

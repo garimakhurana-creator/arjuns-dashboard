@@ -33,6 +33,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   background: var(--bg);
@@ -108,8 +109,6 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .q-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .flag { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--low-bg); color: var(--low); }
 .q-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.q-email { grid-column: 1 / -1; }
-.q-email label { margin-top: 6px; }
 .q-status { margin: 6px 0 0; font-size: 12px; }
 .chip.low { background: var(--low-bg); color: var(--low); }
 .chip.med { background: var(--med-bg); color: var(--med); }
@@ -160,3 +159,22 @@ td pre { white-space: pre-wrap; font-size: 12px; max-height: 400px; overflow: au
 .cat-HIGH_POTENTIAL { color: var(--high); font-weight: 600; }
 .cat-MEDIUM_POTENTIAL { color: var(--med); font-weight: 600; }
 .cat-LOW_POTENTIAL { color: var(--low); font-weight: 600; }
+
+/* Detailed summary dialog (Review queue) */
+dialog.detail {
+  width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
+  padding: 0; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); color: var(--ink);
+}
+dialog.detail::backdrop { background: rgba(0, 0, 0, .45); }
+.detail-head {
+  position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.detail-head h2 { margin: 0; }
+#detail-body { padding: 16px; }
+#detail-body .card { margin: 0; }
+.rationale-block { border-top: 1px solid var(--line); margin-top: 16px; }
+.rationale-text { margin: 0; white-space: pre-wrap; font-size: 13px; }
+.detail-actions { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+.detail-status { margin-right: auto; font-size: 13px; }

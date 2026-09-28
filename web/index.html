@@ -55,13 +55,13 @@
         <ul id="upload-results" class="results"></ul>
       </form>
 
-      <h2 class="section-title">Shortlist <span class="muted small-note">High potential, with full interview briefs</span></h2>
+      <h2 class="section-title">Shortlist <span class="muted small-note">High potential, plus medium candidates you reconsider</span></h2>
       <div id="candidates"></div>
     </section>
 
     <section id="view-review" hidden>
       <div class="panel">
-        <h2>Medium potential <span class="muted small-note">Invite or reject in one click. The full brief is in the audit log.</span></h2>
+        <h2>Medium potential <span class="muted small-note">Open the detailed summary, or reconsider to move them to the Shortlist.</span></h2>
         <div id="medium-list" class="rows"></div>
       </div>
 
@@ -71,7 +71,7 @@
             <h2>Rejection emails</h2>
             <p class="muted" id="queue-note"></p>
           </div>
-          <button id="batch-btn" class="secondary">Schedule all waiting</button>
+          <button id="batch-btn" class="secondary">Send all rejection mails</button>
         </div>
         <div id="rejection-list" class="rows"></div>
       </div>
@@ -91,6 +91,14 @@
     </section>
   </main>
 
+  <dialog id="detail-dialog" class="detail" aria-labelledby="detail-title">
+    <div class="detail-head">
+      <h2 id="detail-title">Candidate summary</h2>
+      <button class="ghost small" id="detail-close" type="button">Close</button>
+    </div>
+    <div id="detail-body"></div>
+  </dialog>
+
   <template id="row-tpl">
     <div class="qrow">
       <div class="q-main">
@@ -102,18 +110,12 @@
         </div>
         <p class="q-reason"></p>
         <div class="q-flags"></div>
+        <p class="q-status muted" hidden></p>
       </div>
       <div class="q-actions">
-        <span class="chip q-state"></span>
-        <button class="ghost small q-toggle">Email</button>
-        <button class="ghost small q-reject" hidden>Reject</button>
-        <button class="primary small q-send"></button>
-      </div>
-      <div class="q-email" hidden>
-        <label>To <input class="e-to" type="email" /></label>
-        <label>Subject <input class="e-subject" /></label>
-        <label>Body <textarea class="e-body" rows="7"></textarea></label>
-        <p class="q-status muted"></p>
+        <span class="chip q-state" hidden></span>
+        <button class="ghost small q-secondary" hidden></button>
+        <button class="primary small q-primary" hidden></button>
       </div>
     </div>
   </template>
@@ -150,6 +152,14 @@
           <h5>Probe in the interview</h5>
           <ol class="probes"></ol>
         </div>
+      </div>
+      <div class="rationale-block" hidden>
+        <h4>Full evaluation reasoning</h4>
+        <p class="rationale-text"></p>
+      </div>
+      <div class="detail-actions row end" hidden>
+        <span class="detail-status muted"></span>
+        <button class="primary detail-reconsider" type="button">Reconsider</button>
       </div>
       <div class="email">
         <h4>Invite draft <span class="email-state chip"></span></h4>
