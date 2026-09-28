@@ -64,7 +64,7 @@
         <div class="queue-head">
           <div>
             <h2>Medium potential <span class="count" id="medium-count"></span></h2>
-            <p class="muted section-note">Open the detailed summary, or reconsider to move them to the Shortlist.</p>
+            <p class="muted section-note">Open the detailed summary, send a rejection mail, or reconsider to move them to the Shortlist.</p>
           </div>
           <button class="ghost small section-toggle" type="button" aria-expanded="true" aria-controls="medium-list">Close</button>
         </div>
@@ -124,6 +124,7 @@
       <div class="q-actions">
         <span class="chip q-state" hidden></span>
         <button class="ghost small q-secondary" hidden></button>
+        <button class="ghost small q-reject" hidden></button>
         <button class="primary small q-primary" hidden></button>
       </div>
     </div>
@@ -168,6 +169,7 @@
       </div>
       <div class="detail-actions row end" hidden>
         <span class="detail-status muted"></span>
+        <button class="ghost detail-reject" type="button">Send rejection mail</button>
         <button class="primary detail-reconsider" type="button">Reconsider</button>
       </div>
       <div class="email">

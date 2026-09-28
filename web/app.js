@@ -119,6 +119,18 @@ function renderRow(r) {
     secondary.hidden = false;
     secondary.textContent = 'Open detailed summary';
     secondary.addEventListener('click', () => openDetail(r.candidate_id));
+    const reject = $('.q-reject', node);
+    reject.hidden = false;
+    reject.textContent = 'Send rejection mail';
+    reject.addEventListener('click', async () => {
+      reject.disabled = true;
+      try {
+        if (!(await rejectMedium({ ...r, recipient_email: r.email.recipient_email }))) reject.disabled = false;
+      } catch (err) {
+        say(err.message);
+        reject.disabled = false;
+      }
+    });
     primary.hidden = false;
     primary.textContent = 'Reconsider';
     primary.addEventListener('click', async () => {
@@ -160,6 +172,27 @@ function renderRow(r) {
     });
   }
   return node;
+}
+
+// Reject a Medium candidate: swap in their pre-written rejection and send it
+// (it arrives after the usual delay). Returns false if Arjun cancels.
+async function rejectMedium({ candidate_id, candidate_name, recipient_email }) {
+  const ok = confirm(`Reject ${candidate_name} and send them a rejection mail${recipient_email ? ` at ${recipient_email}` : ''}?\n\nIt will arrive ${config.rejection_delay_hours} hours from now.`);
+  if (!ok) return false;
+  await api(`/api/candidates/${candidate_id}/pass`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  let note;
+  try {
+    const sent = await api(`/api/candidates/${candidate_id}/send`, { method: 'POST' });
+    note = `Rejection mail to ${candidate_name} sent; it arrives ${fmtDate(sent.scheduled_at)}.`;
+  } catch (err) {
+    note = `${candidate_name} moved to Rejection emails, but the mail couldn't be sent yet: ${err.message}`;
+  }
+  const dialog = $('#detail-dialog');
+  if (dialog.open) dialog.close();
+  await refreshReview();
+  setSectionOpen($('[data-section=rejections]'), true);
+  $('#queue-note').textContent = note;
+  return true;
 }
 
 async function reconsider(candidateId) {
@@ -211,6 +244,21 @@ function renderCard(c, { detail = false } = {}) {
     $('.rationale-block', node).hidden = false;
     $('.rationale-text', node).textContent = c.full_evaluation_rationale || '';
     $('.detail-actions', node).hidden = false;
+    const rejectBtn = $('.detail-reject', node);
+    rejectBtn.addEventListener('click', async () => {
+      rejectBtn.disabled = true;
+      try {
+        const done = await rejectMedium({
+          candidate_id: c.candidate_id,
+          candidate_name: c.candidate_name,
+          recipient_email: c.deliverables.resend_email_draft.recipient_email,
+        });
+        if (!done) rejectBtn.disabled = false;
+      } catch (err) {
+        $('.detail-status', node).textContent = err.message;
+        rejectBtn.disabled = false;
+      }
+    });
     const btn = $('.detail-reconsider', node);
     btn.addEventListener('click', async () => {
       btn.disabled = true;
