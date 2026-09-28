@@ -192,6 +192,8 @@ async function refreshReview() {
   $('#medium-list').replaceChildren(...(medium.length ? medium.map(renderRow) : [empty('No medium-potential candidates waiting.')]));
   $('#rejection-list').replaceChildren(...(rejections.length ? rejections.map(renderRow) : [empty('No rejection emails.')]));
   const waiting = rejections.filter(r => r.email_status === 'QUEUED').length;
+  $('#medium-count').textContent = `(${medium.length})`;
+  $('#rejection-count').textContent = `(${rejections.length}${waiting ? ` · ${waiting} not sent` : ''})`;
   $('#queue-note').textContent = waiting
     ? `${waiting} not sent yet. Each arrives ${config.rejection_delay_hours} hours after you send it.`
     : `All rejection mails are sent or scheduled. Each arrives ${config.rejection_delay_hours} hours after sending.`;
@@ -388,6 +390,26 @@ $('#upload').addEventListener('submit', async e => {
     btn.disabled = false;
     $('#upload-status').textContent = '';
   }
+});
+
+// Open/close the Medium and Rejection sections; remembered per browser.
+function setSectionOpen(panel, open) {
+  panel.classList.toggle('closed', !open);
+  panel.querySelectorAll('.section-body').forEach(el => (el.hidden = !open));
+  const btn = $('.section-toggle', panel);
+  btn.textContent = open ? 'Close' : 'Open';
+  btn.setAttribute('aria-expanded', String(open));
+}
+document.querySelectorAll('.collapsible').forEach(panel => {
+  const key = `kargo.section.${panel.dataset.section}`;
+  let open = true;
+  try { open = localStorage.getItem(key) !== 'closed'; } catch {}
+  setSectionOpen(panel, open);
+  $('.section-toggle', panel).addEventListener('click', () => {
+    const next = panel.classList.contains('closed');
+    setSectionOpen(panel, next);
+    try { localStorage.setItem(key, next ? 'open' : 'closed'); } catch {}
+  });
 });
 
 $('#detail-close').addEventListener('click', () => $('#detail-dialog').close());

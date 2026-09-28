@@ -178,3 +178,10 @@ dialog.detail::backdrop { background: rgba(0, 0, 0, .45); }
 .rationale-text { margin: 0; white-space: pre-wrap; font-size: 13px; }
 .detail-actions { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
 .detail-status { margin-right: auto; font-size: 13px; }
+
+/* Collapsible Review queue sections */
+.head-actions { display: flex; gap: 8px; align-items: center; }
+.count { font-weight: 400; color: var(--muted); font-size: 14px; }
+.section-note { margin: 2px 0 0; font-size: 13px; }
+.collapsible.closed .queue-head { margin-bottom: 0; }
+.collapsible.closed .section-note { display: none; }

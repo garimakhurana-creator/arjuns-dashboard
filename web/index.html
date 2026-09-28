@@ -60,20 +60,29 @@
     </section>
 
     <section id="view-review" hidden>
-      <div class="panel">
-        <h2>Medium potential <span class="muted small-note">Open the detailed summary, or reconsider to move them to the Shortlist.</span></h2>
-        <div id="medium-list" class="rows"></div>
-      </div>
-
-      <div class="panel">
+      <div class="panel collapsible" data-section="medium">
         <div class="queue-head">
           <div>
-            <h2>Rejection emails</h2>
-            <p class="muted" id="queue-note"></p>
+            <h2>Medium potential <span class="count" id="medium-count"></span></h2>
+            <p class="muted section-note">Open the detailed summary, or reconsider to move them to the Shortlist.</p>
           </div>
-          <button id="batch-btn" class="secondary">Send all rejection mails</button>
+          <button class="ghost small section-toggle" type="button" aria-expanded="true" aria-controls="medium-list">Close</button>
         </div>
-        <div id="rejection-list" class="rows"></div>
+        <div id="medium-list" class="rows section-body"></div>
+      </div>
+
+      <div class="panel collapsible" data-section="rejections">
+        <div class="queue-head">
+          <div>
+            <h2>Rejection emails <span class="count" id="rejection-count"></span></h2>
+            <p class="muted section-note" id="queue-note"></p>
+          </div>
+          <div class="head-actions">
+            <button id="batch-btn" class="secondary section-body">Send all rejection mails</button>
+            <button class="ghost small section-toggle" type="button" aria-expanded="true" aria-controls="rejection-list">Close</button>
+          </div>
+        </div>
+        <div id="rejection-list" class="rows section-body"></div>
       </div>
     </section>
 
