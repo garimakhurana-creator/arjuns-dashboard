@@ -24,10 +24,10 @@ const demos = [
     extraction: sample,
     evaluation: {
       parameter_scores: {
-        p1_technical_integration: { score: 5, evidence: 'Built carrier dispatch APIs handling 10k+ daily shipments; integrated EDI 214 status webhooks with enterprise TMS.' },
-        p2_domain_depth: { score: 4, evidence: 'Spent 2 weeks on-site shadowing freight dispatchers at JNPT port yard.' },
-        p3_autonomous_scrappiness: { score: 5, evidence: 'Shipped 0-to-1 tracking module in 6 weeks without a dedicated designer.' },
-        p4_cross_functional_alignment: { score: 4, evidence: 'Integrations work implies partner coordination, but no explicit deal-unblocking story.' },
+        p1_integration_judgment: { score: 5, evidence: 'Built carrier dispatch APIs handling 10k+ daily shipments; integrated EDI 214 status webhooks with enterprise TMS.' },
+        p2_operations_depth: { score: 4, evidence: 'Spent 2 weeks on-site shadowing freight dispatchers at JNPT port yard.' },
+        p3_autonomous_calls: { score: 5, evidence: 'Shipped 0-to-1 tracking module in 6 weeks without a dedicated designer.' },
+        p4_cross_functional_unblocking: { score: 4, evidence: 'Integrations work implies partner coordination, but no explicit deal-unblocking story.' },
       },
       active_risk_flags: [{ flag: 'INFORMATION_GAP_RISK', evidence: 'Adoption and revenue outcomes of the tracking module are not quantified.' }],
       closest_historical_match: 'Rohan Desai (top performer)',
@@ -56,13 +56,13 @@ const demos = [
     extraction: { ...sample, extracted_gaps_and_risks: { missing_impact_metrics: false, vague_ownership_descriptions: false, detected_risk_flags: [] } },
     evaluation: {
       parameter_scores: {
-        p1_customer_discovery: { score: 4, evidence: 'Ran 30+ interviews with warehouse supervisors.' },
-        p2_scrappiness_velocity: { score: 3, evidence: 'Shipped features at a Series C company; no 0-to-1 builds.' },
-        p3_engineering_alignment: { score: 4, evidence: 'Ran two-week sprints with a 6-engineer squad.' },
-        p4_metric_driven_adoption: { score: 3, evidence: 'Mentions a 22% usage lift, but it came from a mandated rollout.' },
+        p1_operations_immersion: { score: 4, evidence: 'Ran 30+ interviews with warehouse supervisors.' },
+        p2_ship_and_kill: { score: 3, evidence: 'Shipped features at a Series C company; no 0-to-1 builds.' },
+        p3_unforced_adoption: { score: 4, evidence: 'Ran two-week sprints with a 6-engineer squad.' },
+        p4_engineering_trust: { score: 3, evidence: 'Mentions a 22% usage lift, but it came from a mandated rollout.' },
       },
-      active_risk_flags: [{ flag: 'DOMAIN_MISALIGNMENT_RISK', evidence: 'Primarily horizontal SaaS; logistics exposure limited to one customer segment.' }],
-      closest_historical_match: 'Sunita K. (top performer)',
+      active_risk_flags: [{ flag: 'NO_OPERATIONS_EXPOSURE_RISK', evidence: 'Primarily horizontal SaaS; logistics exposure limited to one customer segment.' }],
+      closest_historical_match: 'Lavanya Iyer (top performer)',
       recommendation_reason: 'Discovery instincts resemble Sunita K., but 0-to-1 velocity is unproven and logistics depth is thin.',
       full_evaluation_rationale: 'DEMO RECORD. Discovery is strong, execution is solid but in a mature environment. Domain misalignment flagged.',
     },
@@ -92,13 +92,13 @@ const demos = [
     },
     evaluation: {
       parameter_scores: {
-        p1_technical_integration: { score: 3, evidence: 'Managed ERP module roadmaps; integrations were owned by a platform team.' },
-        p2_domain_depth: { score: 2, evidence: 'No freight or operations exposure.' },
-        p3_autonomous_scrappiness: { score: 1, evidence: 'All roles at 10k+ employee companies with PMM, analytics and design support.' },
-        p4_cross_functional_alignment: { score: 3, evidence: 'Coordinated release trains across 4 teams.' },
+        p1_integration_judgment: { score: 3, evidence: 'Managed ERP module roadmaps; integrations were owned by a platform team.' },
+        p2_operations_depth: { score: 2, evidence: 'No freight or operations exposure.' },
+        p3_autonomous_calls: { score: 1, evidence: 'All roles at 10k+ employee companies with PMM, analytics and design support.' },
+        p4_cross_functional_unblocking: { score: 3, evidence: 'Coordinated release trains across 4 teams.' },
       },
-      active_risk_flags: [{ flag: 'ENTERPRISE_DEPENDENCY_RISK', evidence: '12 years across two large ERP vendors; no early-stage work.' }],
-      closest_historical_match: 'Vikram Nair (misfit)',
+      active_risk_flags: [{ flag: 'STRUCTURE_DEPENDENCY_RISK', evidence: '12 years across two large ERP vendors; no early-stage work.' }],
+      closest_historical_match: 'Preetham Rao (misfit)',
       recommendation_reason: 'Matches the Vikram Nair misfit pattern: enterprise dependency without 0-to-1 scrappiness.',
       full_evaluation_rationale: 'DEMO RECORD. Enterprise-only pedigree, no 0-to-1, no domain depth, outcomes not quantified. Auto-rejected; reasons retained for audit.',
     },
@@ -111,6 +111,9 @@ const demos = [
 ];
 
 (async () => {
+  if (store.backendName() !== 'local' && !process.argv.includes('--force')) {
+    throw new Error('Refusing to seed demo candidates into Neon. Unset DATABASE_URL, or pass --force.');
+  }
   for (const d of demos) {
     const rec = buildRecord({ ...d, candidateId: await store.nextCandidateId(), calendlyUrl: process.env.CALENDLY_URL, now: new Date() });
     rec.demo = true;

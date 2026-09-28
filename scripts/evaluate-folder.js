@@ -17,7 +17,11 @@ const path = require('path');
 const store = require('../lib/store');
 const { evaluateCv } = require('../lib/pipeline');
 const { pdfToText } = require('../lib/pdf');
+const { docxToText } = require('../lib/docx');
 const { deliverEmail } = require('../lib/dispatch');
+const { RUBRIC_VERSION } = require('../lib/rubric');
+
+const currentRecords = async () => (await store.readAll()).filter(r => r.rubric_version === RUBRIC_VERSION);
 
 function parseArgs(argv) {
   const opts = { dir: null, concurrency: 3, send: false, allowLocal: false, dryRun: false };
@@ -40,6 +44,7 @@ function rolesFor(file) {
 
 async function readText(filePath) {
   if (/\.pdf$/i.test(filePath)) return pdfToText(fs.readFileSync(filePath));
+  if (/\.docx$/i.test(filePath)) return docxToText(fs.readFileSync(filePath));
   return fs.readFileSync(filePath, 'utf-8');
 }
 
@@ -56,7 +61,7 @@ async function runPool(items, limit, worker) {
 
 // Decides which Low rejections in a both-rubrics group should actually go out.
 async function resolveGroups(groupKeys) {
-  const all = await store.readAll();
+  const all = await currentRecords();
   for (const key of groupKeys) {
     const members = all.filter(r => r.evaluation_group === key);
     const lows = members.filter(r => r.categorization.category === 'LOW_POTENTIAL');
@@ -87,8 +92,9 @@ async function main() {
     process.exit(1);
   }
 
-  const files = fs.readdirSync(opts.dir).filter(f => /\.(pdf|txt|md)$/i.test(f)).sort();
-  const existing = await store.readAll();
+  const files = fs.readdirSync(opts.dir).filter(f => /\.(pdf|docx|txt|md)$/i.test(f)).sort();
+  // Only CVs already scored under the current rubric count as done.
+  const existing = await currentRecords();
   const done = new Set(existing.map(r => `${r.source_file}|${r.role_code}`));
 
   const jobs = [];
@@ -100,7 +106,7 @@ async function main() {
     }
   }
 
-  console.log(`${files.length} files -> ${jobs.length} evaluations to run (storage: ${store.backendName()}, concurrency ${opts.concurrency})`);
+  console.log(`${files.length} files -> ${jobs.length} evaluations to run (rubric ${RUBRIC_VERSION}, storage: ${store.backendName()}, concurrency ${opts.concurrency})`);
   if (opts.dryRun) {
     for (const j of jobs) console.log(`  ${j.role.padEnd(3)} ${j.file}${j.group ? '  [both rubrics]' : ''}`);
     return;
@@ -137,10 +143,10 @@ async function main() {
   });
 
   // Covers pairs from earlier (interrupted) runs too, not just this one.
-  await resolveGroups([...new Set((await store.readAll()).map(r => r.evaluation_group).filter(Boolean))]);
+  await resolveGroups([...new Set((await currentRecords()).map(r => r.evaluation_group).filter(Boolean))]);
 
   if (opts.send) {
-    const queued = (await store.readAll()).filter(r => r.categorization.category === 'LOW_POTENTIAL' && r.email_status === 'QUEUED');
+    const queued = (await currentRecords()).filter(r => r.categorization.category === 'LOW_POTENTIAL' && r.email_status === 'QUEUED');
     for (const r of queued) {
       try {
         await deliverEmail(r.candidate_id);

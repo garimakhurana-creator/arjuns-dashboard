@@ -7,13 +7,15 @@
     "start": "node server.js",
     "test": "node --test",
     "seed": "node scripts/seed-demo.js",
-    "evaluate": "node scripts/evaluate-folder.js"
+    "evaluate": "node scripts/evaluate-folder.js",
+    "calibrate": "node scripts/calibrate.js"
   },
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
     "express": "^5.2.1",
+    "mammoth": "^1.13.0",
     "multer": "^2.4.0",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.23.0",

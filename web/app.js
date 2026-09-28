@@ -1,4 +1,14 @@
 const PARAM_LABELS = {
+  // Current rubric
+  p1_integration_judgment: ['Integration & platform judgment', 30],
+  p2_operations_depth: ['Ground-level operations depth', 30],
+  p3_autonomous_calls: ['Autonomous calls in ambiguity', 25],
+  p4_cross_functional_unblocking: ['Cross-functional unblocking & standards', 15],
+  p1_operations_immersion: ['Ground-level operations immersion', 30],
+  p2_ship_and_kill: ['Ship, learn & kill in short cycles', 25],
+  p3_unforced_adoption: ['Unforced adoption with operational impact', 25],
+  p4_engineering_trust: ['Engineering trust & self-built rhythm', 20],
+  // Earlier rubric (audit log only)
   p1_technical_integration: ['Integration architecture & technical depth', 30],
   p2_domain_depth: ['Domain depth & operational realities', 25],
   p3_autonomous_scrappiness: ['Autonomous execution in ambiguity', 25],
@@ -10,9 +20,11 @@ const PARAM_LABELS = {
 };
 const CAT_LABEL = { HIGH_POTENTIAL: 'High potential', MEDIUM_POTENTIAL: 'Medium potential', LOW_POTENTIAL: 'Auto-rejected' };
 const FLAG_LABEL = {
+  NO_OPERATIONS_EXPOSURE_RISK: 'No operations exposure',
+  STRUCTURE_DEPENDENCY_RISK: 'Structure dependency',
+  INFORMATION_GAP_RISK: 'Information gap',
   ENTERPRISE_DEPENDENCY_RISK: 'Enterprise dependency',
   DOMAIN_MISALIGNMENT_RISK: 'Domain misalignment / B2C',
-  INFORMATION_GAP_RISK: 'Information gap',
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -279,7 +291,7 @@ async function refreshAudit() {
     const tr = document.createElement('tr');
     const cells = [
       r.candidate_id, r.candidate_name, r.selected_role, `${r.scoring.match_score_pct}%`,
-      r.scoring.total_risk_score, CAT_LABEL[r.categorization.category], r.status, r.email_status,
+      r.scoring.total_risk_score, CAT_LABEL[r.categorization.category] + (r.rubric_version === config.rubric_version ? "" : " (old rubric)"), r.status, r.email_status,
     ];
     for (const v of cells) {
       const td = document.createElement('td');

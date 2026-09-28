@@ -5,12 +5,14 @@ const path = require('path');
 require('./lib/env').loadDotEnv();
 
 const { pdfToText } = require('./lib/pdf');
+const { docxToText } = require('./lib/docx');
 const store = require('./lib/store');
 const { evaluateCv } = require('./lib/pipeline');
 const { sendEmail } = require('./lib/resend');
 const { deliverEmail } = require('./lib/dispatch');
 const llm = require('./lib/llm');
 const { requirePassword } = require('./lib/auth');
+const { RUBRIC_VERSION } = require('./lib/rubric');
 
 const app = express();
 const PORT = process.env.PORT || 3500;
@@ -39,10 +41,13 @@ async function fileToText(file) {
   if (name.endsWith('.pdf') || file.mimetype === 'application/pdf') {
     return pdfToText(file.buffer);
   }
+  if (name.endsWith('.docx')) {
+    return docxToText(file.buffer);
+  }
   if (/\.(txt|md|text)$/.test(name) || file.mimetype.startsWith('text/')) {
     return file.buffer.toString('utf-8');
   }
-  throw new Error(`Unsupported file type for ${file.originalname}. Upload PDF or plain text.`);
+  throw new Error(`Unsupported file type for ${file.originalname}. Upload PDF, Word (.docx) or plain text.`);
 }
 
 // Full card for the shortlist tab (High potential only).
@@ -90,6 +95,9 @@ const byScore = (a, b) =>
   a.scoring.total_risk_score - b.scoring.total_risk_score;
 const isRejection = r => r.deliverables.resend_email_draft.type === 'DELAYED_REJECTION';
 
+// Records scored under an older rubric stay in the audit log only.
+const currentRecords = async () => (await store.readAll()).filter(r => r.rubric_version === RUBRIC_VERSION);
+
 app.get('/api/config', (req, res) => {
   res.json({
     llm_configured: llm.isConfigured(),
@@ -99,6 +107,7 @@ app.get('/api/config', (req, res) => {
     rejection_delay_hours: REJECTION_DELAY_HOURS,
     model: llm.activeModel(),
     storage: store.backendName(),
+    rubric_version: RUBRIC_VERSION,
     max_files_per_upload: MAX_FILES,
   });
 });
@@ -155,7 +164,7 @@ app.post('/api/candidates', upload.array('cv'), async (req, res) => {
 });
 
 app.get('/api/dashboard', async (req, res) => {
-  const all = await store.readAll();
+  const all = await currentRecords();
   const high = all
     .filter(r => r.categorization.category === 'HIGH_POTENTIAL' && r.status !== 'PASSED_BY_FOUNDER')
     .sort(byScore)
@@ -178,7 +187,7 @@ app.get('/api/dashboard', async (req, res) => {
 // Review queue: Medium candidates still in play, plus every rejection email
 // (Low auto-rejects and candidates Arjun passed on), as concise rows.
 app.get('/api/review', async (req, res) => {
-  const all = await store.readAll();
+  const all = await currentRecords();
   res.json({
     medium: all
       .filter(r => r.categorization.category === 'MEDIUM_POTENTIAL' && !isRejection(r))
@@ -239,7 +248,7 @@ app.post('/api/candidates/:id/pass', async (req, res) => {
 
 // One click: schedule every queued rejection via Resend, delivered after the delay.
 app.post('/api/rejections/send-batch', async (req, res) => {
-  const queued = (await store.readAll()).filter(r => r.email_status === 'QUEUED');
+  const queued = (await currentRecords()).filter(r => r.email_status === 'QUEUED');
   const scheduledAt = new Date(Date.now() + REJECTION_DELAY_HOURS * 3600 * 1000).toISOString();
   let scheduled = 0;
   const failures = [];

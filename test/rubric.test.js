@@ -8,14 +8,14 @@ const { extractAndRedact } = require('../lib/pii');
 const sample = require('../fixtures/sample-extraction.json').extracted_candidate_data;
 
 const spmScores = (a, b, c, d) => ({
-  p1_technical_integration: { score: a, evidence: 'x' },
-  p2_domain_depth: { score: b, evidence: 'x' },
-  p3_autonomous_scrappiness: { score: c, evidence: 'x' },
-  p4_cross_functional_alignment: { score: d, evidence: 'x' },
+  p1_integration_judgment: { score: a, evidence: 'x' },
+  p2_operations_depth: { score: b, evidence: 'x' },
+  p3_autonomous_calls: { score: c, evidence: 'x' },
+  p4_cross_functional_unblocking: { score: d, evidence: 'x' },
 });
 
 test('match score applies SPM weights', () => {
-  // 30 + 20 + 25 + 16
+  // weights 30/30/25/15: 30 + 24 + 25 + 12
   assert.strictEqual(computeMatchScore('SPM', spmScores(5, 4, 5, 4)), 91);
   assert.strictEqual(computeMatchScore('SPM', spmScores(5, 5, 5, 5)), 100);
   assert.strictEqual(computeMatchScore('SPM', spmScores(1, 1, 1, 1)), 20);
@@ -23,17 +23,19 @@ test('match score applies SPM weights', () => {
 
 test('match score applies PM weights', () => {
   const s = {
-    p1_customer_discovery: { score: 4 }, p2_scrappiness_velocity: { score: 3 },
-    p3_engineering_alignment: { score: 5 }, p4_metric_driven_adoption: { score: 2 },
+    p1_operations_immersion: { score: 4 }, p2_ship_and_kill: { score: 3 },
+    p3_unforced_adoption: { score: 5 }, p4_engineering_trust: { score: 2 },
   };
-  // 24 + 18 + 20 + 8
-  assert.strictEqual(computeMatchScore('PM', s), 70);
+  // weights 30/25/25/20: 24 + 15 + 25 + 8
+  assert.strictEqual(computeMatchScore('PM', s), 72);
 });
 
 test('risk score sums distinct flags and caps at 100', () => {
   assert.strictEqual(computeRiskScore([]), 0);
   assert.strictEqual(computeRiskScore(['INFORMATION_GAP_RISK', 'INFORMATION_GAP_RISK']), 20);
-  assert.strictEqual(computeRiskScore(['ENTERPRISE_DEPENDENCY_RISK', 'DOMAIN_MISALIGNMENT_RISK', 'INFORMATION_GAP_RISK']), 85);
+  assert.strictEqual(computeRiskScore(['NO_OPERATIONS_EXPOSURE_RISK', 'STRUCTURE_DEPENDENCY_RISK', 'INFORMATION_GAP_RISK']), 80);
+  // Retired flag keys from the earlier rubric carry no points.
+  assert.strictEqual(computeRiskScore(['ENTERPRISE_DEPENDENCY_RISK']), 0);
 });
 
 test('categorization matrix', () => {
@@ -105,11 +107,26 @@ test('rubric weights sum to 100% and every parameter has all three levels', () =
   }
 });
 
-test('calibration treats Vikram Nair and Lavanya Iyer as misfits', () => {
-  const { CALIBRATION } = require('../lib/rubric');
-  const misfits = CALIBRATION.split('MISFITS')[1];
-  assert.ok(misfits.includes('Vikram Nair') && misfits.includes('Lavanya Iyer'));
-  assert.ok(!CALIBRATION.split('MISFITS')[0].includes('Lavanya Iyer ('));
+test('calibration follows the problem statement ratings', () => {
+  const { HISTORICAL_HIRES, CALIBRATION } = require('../lib/rubric');
+  const fit = Object.fromEntries(HISTORICAL_HIRES.map(h => [h.name, h.fit]));
+  assert.strictEqual(HISTORICAL_HIRES.length, 8);
+  for (const n of ['Rohan Desai', 'Sunita Krishnamurthy', 'Aditya Shetty', 'Meghna Tiwari', 'Lavanya Iyer']) assert.strictEqual(fit[n], 'top', n);
+  for (const n of ['Vikram Nair', 'Rahul Bose', 'Preetham Rao']) assert.strictEqual(fit[n], 'misfit', n);
+  const [top, misfit] = CALIBRATION.split('MEETS OR BELOW EXPECTATIONS');
+  assert.ok(top.includes('Lavanya Iyer, hired as Product Manager') && misfit.includes('Preetham Rao, hired as Backend Engineer'));
+});
+
+test('new extraction signals raise operations and structure flags', () => {
+  const extraction = {
+    operations_signals: { has_hands_on_operations_experience: false, has_worked_alongside_operations_teams: false },
+    organisation_signals: { has_early_stage_experience: false, only_large_or_layered_organisations: true },
+    extracted_gaps_and_risks: { missing_impact_metrics: false, vague_ownership_descriptions: false, detected_risk_flags: [] },
+  };
+  assert.deepStrictEqual(deriveRiskFlagsFromExtraction(extraction).map(f => f.flag), ['NO_OPERATIONS_EXPOSURE_RISK', 'STRUCTURE_DEPENDENCY_RISK']);
+  extraction.operations_signals.has_worked_alongside_operations_teams = true;
+  extraction.organisation_signals.has_early_stage_experience = true;
+  assert.deepStrictEqual(deriveRiskFlagsFromExtraction(extraction), []);
 });
 
 test('headings and job titles are never taken as the candidate name', () => {
