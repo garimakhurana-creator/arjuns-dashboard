@@ -136,7 +136,8 @@ async function main() {
     }
   });
 
-  await resolveGroups([...new Set(jobs.map(j => j.group).filter(Boolean))]);
+  // Covers pairs from earlier (interrupted) runs too, not just this one.
+  await resolveGroups([...new Set((await store.readAll()).map(r => r.evaluation_group).filter(Boolean))]);
 
   if (opts.send) {
     const queued = (await store.readAll()).filter(r => r.categorization.category === 'LOW_POTENTIAL' && r.email_status === 'QUEUED');

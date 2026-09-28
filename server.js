@@ -10,14 +10,29 @@ const { evaluateCv } = require('./lib/pipeline');
 const { sendEmail } = require('./lib/resend');
 const { deliverEmail } = require('./lib/dispatch');
 const llm = require('./lib/llm');
+const { requirePassword } = require('./lib/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3500;
 const REJECTION_DELAY_HOURS = Number(process.env.REJECTION_DELAY_HOURS || 48);
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 30 } });
+const ON_VERCEL = Boolean(process.env.VERCEL);
+// Each CV takes ~80s to evaluate and a Vercel request is capped at 300s, so
+// uploads there are limited; use scripts/evaluate-folder.js for bulk imports.
+const MAX_FILES = ON_VERCEL ? 3 : 30;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024, files: MAX_FILES } });
 
+// Password is optional locally, mandatory on a deployment.
+app.use(requirePassword({ required: ON_VERCEL }));
+// Vercel's filesystem is read-only, so the local JSON store can't work there.
+app.use('/api', (req, res, next) => {
+  if (ON_VERCEL && store.backendName() !== 'neon') {
+    return res.status(503).json({ error: 'DATABASE_URL is not set in the Vercel environment.' });
+  }
+  next();
+});
 app.use(express.json({ limit: '1mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+// Not named public/: Vercel would serve that from its CDN, bypassing the password.
+app.use(express.static(path.join(__dirname, 'web')));
 
 async function fileToText(file) {
   const name = file.originalname.toLowerCase();
@@ -84,6 +99,7 @@ app.get('/api/config', (req, res) => {
     rejection_delay_hours: REJECTION_DELAY_HOURS,
     model: llm.activeModel(),
     storage: store.backendName(),
+    max_files_per_upload: MAX_FILES,
   });
 });
 
@@ -245,6 +261,22 @@ app.post('/api/rejections/send-batch', async (req, res) => {
   res.status(failures.length && !scheduled ? 502 : 200).json({ scheduled, scheduled_at: scheduledAt, failures });
 });
 
-app.listen(PORT, () => {
-  console.log(`Kargo hiring dashboard running at http://localhost:${PORT} (storage: ${store.backendName()}, LLM: ${llm.provider()})`);
+// Upload limits and other errors come back as JSON the dashboard can show.
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    const msg = err.code === 'LIMIT_FILE_COUNT' ? `Upload at most ${MAX_FILES} CVs at a time here.`
+      : err.code === 'LIMIT_FILE_SIZE' ? 'Each CV must be under 4 MB.' : err.message;
+    return res.status(400).json({ error: msg });
+  }
+  console.error(err);
+  res.status(500).json({ error: err.message || 'Server error' });
 });
+
+// Vercel imports the app; locally it runs as a normal server.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Kargo hiring dashboard running at http://localhost:${PORT} (storage: ${store.backendName()}, LLM: ${llm.provider()})`);
+  });
+}
+
+module.exports = app;

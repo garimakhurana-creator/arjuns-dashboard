@@ -39,6 +39,8 @@ async function loadConfig() {
   if (!config.calendly_url) missing.push('CALENDLY_URL (invites keep a [Calendly Link] placeholder)');
   const warn = $('#config-warning');
   warn.hidden = missing.length === 0;
+  const cvInput = document.querySelector('input[name=cv]');
+  if (cvInput && config.max_files_per_upload) cvInput.title = `Up to ${config.max_files_per_upload} CVs per upload`;
   warn.textContent = missing.length ? `Not configured in kargo-hiring/.env: ${missing.join(' · ')}` : '';
 }
 
