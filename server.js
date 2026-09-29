@@ -290,7 +290,13 @@ app.post('/api/rejections/send-batch', async (req, res) => {
       if (/RESEND_API_KEY/.test(err.message)) break;
     }
   }
-  res.status(failures.length && !scheduled ? 502 : 200).json({ scheduled, scheduled_at: scheduledAt, failures });
+  const allFailed = failures.length && !scheduled;
+  res.status(allFailed ? 502 : 200).json({
+    scheduled,
+    scheduled_at: scheduledAt,
+    failures,
+    ...(allFailed ? { error: `No rejection mails were sent: ${failures[0].error}` } : {}),
+  });
 });
 
 // Upload limits and other errors come back as JSON the dashboard can show.
