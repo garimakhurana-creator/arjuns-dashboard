@@ -56,27 +56,59 @@ async function loadConfig() {
   warn.textContent = missing.length ? `Not configured in kargo-hiring/.env: ${missing.join(' · ')}` : '';
 }
 
+let statsShown = false;
+
 function renderStats(s) {
   const items = [
-    ['Evaluated', s.total_evaluated],
-    ['High', s.high],
-    ['Medium', s.medium],
-    ['Auto-rejected', s.auto_rejected],
-    ['Invites sent', s.invites_sent],
+    ['Evaluated', s.total_evaluated, ''],
+    ['High', s.high, 'high'],
+    ['Medium', s.medium, 'med'],
+    ['Auto-rejected', s.auto_rejected, 'low'],
+    ['Invites sent', s.invites_sent, 'sent'],
   ];
-  $('#stats').replaceChildren(...items.map(([k, v]) => {
+  const box = $('#stats');
+  box.replaceChildren(...items.map(([k, v, cls]) => {
     const d = document.createElement('div');
-    d.className = 'stat';
-    d.innerHTML = `<b></b><span></span>`;
-    d.querySelector('b').textContent = v;
-    d.querySelector('span').textContent = k;
+    d.className = `stat ${cls}`;
+    d.innerHTML = '<span class="k"><i></i><span></span></span><b></b>';
+    d.querySelector('.k span').textContent = k;
+    const num = d.querySelector('b');
+    num.dataset.count = v;
+    num.textContent = v;
     return d;
   }));
+  Motion.stats(box, { animateNumbers: !statsShown });
+
+  // Pipeline bar: share of High / Medium / Low among everything evaluated.
+  const bar = $('#pipeline-bar');
+  const total = s.high + s.medium + s.auto_rejected;
+  bar.replaceChildren(...[['high', s.high], ['med', s.medium], ['low', s.auto_rejected]].filter(([, n]) => n > 0).map(([cls, n]) => {
+    const seg = document.createElement('span');
+    seg.className = `seg-fill ${cls}`;
+    seg.dataset.grow = n;
+    seg.title = `${n} ${cls === 'high' ? 'high' : cls === 'med' ? 'medium' : 'low'} potential`;
+    return seg;
+  }));
+  bar.hidden = total === 0;
+  Motion.pipeline(bar, !statsShown);
+
+  const shortlisted = s.high + (s.reconsidered || 0);
+  const parts = [];
+  parts.push(`<b>${s.high}</b> ready to interview`);
+  if (s.medium_awaiting) parts.push(`<b>${s.medium_awaiting}</b> waiting for your call`);
+  if (s.rejections_queued) parts.push(`<b>${s.rejections_queued}</b> rejection mail${s.rejections_queued === 1 ? '' : 's'} to send`);
+  Motion.swapText($('#hero-sub'), s.total_evaluated
+    ? `${parts.join(' · ')}. ${s.total_evaluated} CVs evaluated so far.`
+    : 'No CVs evaluated yet. Drop a few below to build your first shortlist.');
+  void shortlisted;
+  statsShown = true;
 
   const pending = s.medium_awaiting + s.rejections_queued;
   const badge = $('#review-badge');
+  const changed = badge.textContent !== String(pending);
   badge.hidden = pending === 0;
   badge.textContent = pending;
+  if (changed && !badge.hidden) Motion.pulse(badge);
 }
 
 const fmtDate = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
@@ -93,6 +125,9 @@ function rejectionState(r) {
 function renderRow(r) {
   const node = $('#row-tpl').content.firstElementChild.cloneNode(true);
   const isMedium = r.email.type === 'INTERVIEW_INVITE';
+  node.dataset.match = r.match_score_pct;
+  node.classList.toggle('is-low', r.category === 'LOW_POTENTIAL');
+  $('.q-ring-val', node).textContent = Math.round(r.match_score_pct);
 
   $('.q-name', node).textContent = r.candidate_name;
   $('.q-meta', node).textContent = `${r.candidate_id} · ${r.selected_role}`;
@@ -136,7 +171,7 @@ function renderRow(r) {
     primary.addEventListener('click', async () => {
       primary.disabled = true;
       try {
-        await reconsider(r.candidate_id);
+        await reconsider(r.candidate_id, node);
       } catch (err) {
         say(err.message);
         primary.disabled = false;
@@ -187,18 +222,17 @@ async function rejectMedium({ candidate_id, candidate_name, recipient_email }) {
   } catch (err) {
     note = `${candidate_name} moved to Rejection emails, but the mail couldn't be sent yet: ${err.message}`;
   }
-  const dialog = $('#detail-dialog');
-  if (dialog.open) dialog.close();
+  closeDetail();
   await refreshReview();
   setSectionOpen($('[data-section=rejections]'), true);
   $('#queue-note').textContent = note;
   return true;
 }
 
-async function reconsider(candidateId) {
+async function reconsider(candidateId, node) {
   await api(`/api/candidates/${candidateId}/reconsider`, { method: 'POST' });
-  const dialog = $('#detail-dialog');
-  if (dialog.open) dialog.close();
+  closeDetail();
+  await Motion.leave(node);
   await refreshReview();
 }
 
@@ -209,10 +243,13 @@ async function openDetail(candidateId) {
   $('#detail-title').textContent = 'Candidate summary';
   body.replaceChildren(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'Loading…' }));
   dialog.showModal();
+  Motion.dialogIn(dialog);
   try {
     const c = await api(`/api/candidates/${candidateId}`);
     $('#detail-title').textContent = c.candidate_name;
-    body.replaceChildren(renderCard(c, { detail: true }));
+    const card = renderCard(c, { detail: true });
+    body.replaceChildren(card);
+    Motion.cards([card], { animate: true });
   } catch (err) {
     body.replaceChildren(Object.assign(document.createElement('p'), { className: 'err', textContent: err.message }));
   }
@@ -224,7 +261,9 @@ async function refreshReview() {
   const empty = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
   loaded.medium = medium;
   renderMedium();
-  $('#rejection-list').replaceChildren(...(rejections.length ? rejections.map(renderRow) : [empty('No rejection emails.')]));
+  const rejRows = rejections.map(renderRow);
+  $('#rejection-list').replaceChildren(...(rejRows.length ? rejRows : [empty('No rejection emails.')]));
+  Motion.rows(rejRows, { animate: true });
   const waiting = rejections.filter(r => r.email_status === 'QUEUED').length;
   $('#medium-count').textContent = `(${medium.length})`;
   $('#rejection-count').textContent = `(${rejections.length}${waiting ? ` · ${waiting} not sent` : ''})`;
@@ -238,6 +277,9 @@ function renderCard(c, { detail = false } = {}) {
   const node = $('#card-tpl').content.firstElementChild.cloneNode(true);
   const cat = c.categorization.category;
   node.classList.add(cat === 'HIGH_POTENTIAL' ? 'high' : 'medium');
+  node.dataset.match = c.scoring.match_score_pct;
+  $('.avatar', node).textContent = c.candidate_name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  $('.ring', node).setAttribute('aria-label', `${c.scoring.match_score_pct}% match`);
   if (detail) {
     // Read-only summary: no email editor; full reasoning and Reconsider instead.
     node.classList.add('in-detail');
@@ -285,7 +327,7 @@ function renderCard(c, { detail = false } = {}) {
     el.innerHTML = `<div class="p-head"><span></span><b></b></div><div class="bar"><i></i></div><p class="muted"></p>`;
     el.querySelector('span').textContent = `${label} (${weight}%)`;
     el.querySelector('b').textContent = `${v.score}/5`;
-    el.querySelector('i').style.width = `${v.score * 20}%`;
+    el.querySelector('i').dataset.w = v.score * 20;
     el.querySelector('p').textContent = v.evidence;
     params.appendChild(el);
   }
@@ -304,8 +346,13 @@ function renderCard(c, { detail = false } = {}) {
   const b = c.deliverables.interview_brief;
   $('.summary', node).textContent = b.summary;
   $('.why', node).textContent = b.why_ranked_here;
-  b.key_strengths.forEach(s => $('.strengths', node).appendChild(li(s)));
-  b.risk_factors.forEach(s => $('.risks', node).appendChild(li(s)));
+  const fill = (sel, items, none) => {
+    const ul = $(sel, node);
+    if (items.length) items.forEach(s => ul.appendChild(li(s)));
+    else ul.appendChild(Object.assign(li(none), { className: 'none' }));
+  };
+  fill('.strengths', b.key_strengths, 'None noted');
+  fill('.risks', b.risk_factors, 'None noted');
   b.interview_probes.forEach(s => $('.probes', node).appendChild(li(s)));
 
   if (detail) return node;
@@ -375,7 +422,7 @@ function applyFilter(name, items, matchOf) {
   return shown;
 }
 
-function renderShortlist() {
+function renderShortlist({ animate = true } = {}) {
   const list = $('#candidates');
   const shown = applyFilter('shortlist', loaded.shortlist, c => c.scoring.match_score_pct);
   if (!loaded.shortlist.length) {
@@ -383,15 +430,19 @@ function renderShortlist() {
   } else if (!shown.length) {
     list.innerHTML = `<p class="empty muted">No shortlisted candidates at ${filters.shortlist}% match or above.</p>`;
   } else {
-    list.replaceChildren(...shown.map(c => renderCard(c)));
+    const cards = shown.map(c => renderCard(c));
+    list.replaceChildren(...cards);
+    Motion.cards(cards, { animate });
   }
 }
 
-function renderMedium() {
+function renderMedium({ animate = true } = {}) {
   const empty = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
   const shown = applyFilter('medium', loaded.medium, r => r.match_score_pct);
-  $('#medium-list').replaceChildren(...(shown.length ? shown.map(renderRow)
+  const rows = shown.map(renderRow);
+  $('#medium-list').replaceChildren(...(rows.length ? rows
     : [empty(loaded.medium.length ? `No medium-potential candidates at ${filters.medium}% match or above.` : 'No medium-potential candidates waiting.')]));
+  Motion.rows(rows, { animate });
 }
 
 document.querySelectorAll('.filter-bar').forEach(bar => {
@@ -399,13 +450,14 @@ document.querySelectorAll('.filter-bar').forEach(bar => {
   const input = $('.filter-min', bar);
   const out = $('.filter-val', bar);
   try { filters[name] = Number(localStorage.getItem(`kargo.filter.${name}`)) || 0; } catch {}
+  const paint = () => { out.textContent = `${filters[name]}%`; input.style.setProperty('--fill', `${filters[name]}%`); };
   input.value = filters[name];
-  out.textContent = `${filters[name]}%`;
+  paint();
   input.addEventListener('input', () => {
     filters[name] = Number(input.value);
-    out.textContent = `${filters[name]}%`;
+    paint();
     try { localStorage.setItem(`kargo.filter.${name}`, String(filters[name])); } catch {}
-    (name === 'shortlist' ? renderShortlist : renderMedium)();
+    (name === 'shortlist' ? renderShortlist : renderMedium)({ animate: false });
   });
 });
 
@@ -452,6 +504,7 @@ async function refreshAudit() {
     tbody.append(tr, detail);
   }
   if (!records.length) tbody.innerHTML = '<tr><td colspan="9" class="muted">No evaluations yet.</td></tr>';
+  Motion.tableRows(tbody);
 }
 
 $('#upload').addEventListener('submit', async e => {
@@ -486,9 +539,12 @@ $('#upload').addEventListener('submit', async e => {
 });
 
 // Open/close the Medium and Rejection sections; remembered per browser.
-function setSectionOpen(panel, open) {
+function setSectionOpen(panel, open, { instant = false } = {}) {
+  const was = !panel.classList.contains('closed');
   panel.classList.toggle('closed', !open);
-  panel.querySelectorAll('.section-body').forEach(el => (el.hidden = !open));
+  const bodies = [...panel.querySelectorAll('.section-body')];
+  if (instant || was === open) bodies.forEach(el => (el.hidden = !open));
+  else Motion.section(bodies, open);
   const btn = $('.section-toggle', panel);
   btn.textContent = open ? 'Close' : 'Open';
   btn.setAttribute('aria-expanded', String(open));
@@ -497,7 +553,7 @@ document.querySelectorAll('.collapsible').forEach(panel => {
   const key = `kargo.section.${panel.dataset.section}`;
   let open = true;
   try { open = localStorage.getItem(key) !== 'closed'; } catch {}
-  setSectionOpen(panel, open);
+  setSectionOpen(panel, open, { instant: true });
   $('.section-toggle', panel).addEventListener('click', () => {
     const next = panel.classList.contains('closed');
     setSectionOpen(panel, next);
@@ -505,8 +561,13 @@ document.querySelectorAll('.collapsible').forEach(panel => {
   });
 });
 
-$('#detail-close').addEventListener('click', () => $('#detail-dialog').close());
-$('#detail-dialog').addEventListener('click', e => { if (e.target.id === 'detail-dialog') e.target.close(); });
+function closeDetail() {
+  const dialog = $('#detail-dialog');
+  if (dialog.open) Motion.dialogOut(dialog, () => dialog.close());
+}
+$('#detail-close').addEventListener('click', closeDetail);
+$('#detail-dialog').addEventListener('click', e => { if (e.target.id === 'detail-dialog') closeDetail(); });
+$('#detail-dialog').addEventListener('cancel', e => { e.preventDefault(); closeDetail(); });
 
 $('#batch-btn').addEventListener('click', async () => {
   const btn = $('#batch-btn');
@@ -524,11 +585,49 @@ $('#batch-btn').addEventListener('click', async () => {
 });
 
 document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+  if (tab.classList.contains('active')) return;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t === tab);
+    t.setAttribute('aria-selected', String(t === tab));
+  });
+  Motion.indicator(tab);
   const view = tab.dataset.view;
   for (const v of ['dashboard', 'review', 'audit']) $(`#view-${v}`).hidden = view !== v;
+  Motion.view($(`#view-${view}`));
   ({ dashboard: refresh, review: refreshReview, audit: refreshAudit })[view]();
 }));
+const placeIndicator = () => Motion.indicator($('.tab.active'), true);
+window.addEventListener('resize', placeIndicator);
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(placeIndicator);
+
+// Dropzone: show chosen files, highlight on drag.
+(() => {
+  const zone = $('#dropzone');
+  const input = $('input[name=cv]', zone);
+  const title = $('#dz-title');
+  const sub = $('#dz-sub');
+  const idle = [title.innerHTML, sub.textContent];
+  const show = () => {
+    const files = [...input.files];
+    if (!files.length) { title.innerHTML = idle[0]; sub.textContent = idle[1]; return; }
+    title.textContent = files.length === 1 ? files[0].name : `${files.length} CVs selected`;
+    sub.textContent = files.length === 1 ? `${Math.max(1, Math.round(files[0].size / 1024))} KB · ready to evaluate` : files.map(f => f.name).slice(0, 3).join(', ') + (files.length > 3 ? '…' : '');
+  };
+  input.addEventListener('change', show);
+  ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, () => zone.classList.add('drag')));
+  ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, () => zone.classList.remove('drag')));
+  $('#upload').addEventListener('reset', () => setTimeout(show));
+})();
+
+// Greeting and date in the hero, set before the intro animation splits the words.
+(() => {
+  const now = new Date();
+  const h = now.getHours();
+  const part = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+  $('#hero-title').innerHTML = `Good ${part}, <em>Arjun.</em>`;
+  $('#hero-date').textContent = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) + ' · Hiring desk';
+  Motion.intro();
+})();
 
 loadConfig().then(refresh).catch(err => {
   $('#candidates').textContent = err.message;
