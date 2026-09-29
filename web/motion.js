@@ -5,7 +5,7 @@
   const g = window.gsap;
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // ?still renders the final state with no motion (for screenshots and print).
-  const still = /[?&]still/.test(location.search);
+  const still = /[?&]still(?:[=&]|$)/.test(location.search);
   const on = Boolean(g) && !reduced && !still;
   // Animate only when someone can see it; hidden tabs pause animation frames,
   // so a hidden page gets the final state straight away.
@@ -20,11 +20,11 @@
     return t;
   };
   const G = g && {
-    to: (...a) => settle(G.to(...a)),
-    from: (...a) => settle(G.from(...a)),
-    fromTo: (...a) => settle(G.fromTo(...a)),
-    set: (...a) => G.set(...a),
-    timeline: (...a) => G.timeline(...a),
+    to: (...a) => settle(g.to(...a)),
+    from: (...a) => settle(g.from(...a)),
+    fromTo: (...a) => settle(g.fromTo(...a)),
+    set: (...a) => g.set(...a),
+    timeline: (...a) => g.timeline(...a),
   };
 
   const EASE = 'power3.out';
