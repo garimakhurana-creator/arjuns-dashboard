@@ -51,6 +51,22 @@ async function fileToText(file) {
 }
 
 // Full card for the shortlist tab (High potential only).
+function defaultRejection(r) {
+  const first = (r.candidate_name || 'there').split(/\s+/)[0];
+  return {
+    type: 'DELAYED_REJECTION',
+    recipient_email: r.deliverables.resend_email_draft.recipient_email,
+    subject: 'Your application to Kargo',
+    body_text: `Hi ${first},\n\nThank you for your interest in Kargo and for the time you put into your application. After careful review, we won't be moving forward for this role.\n\nI appreciate you considering us and wish you the very best in your search.\n\nArjun Mehta\nFounder, Kargo`,
+  };
+}
+
+function rejectionDraft(r) {
+  const current = r.deliverables.resend_email_draft;
+  if (current.type === 'DELAYED_REJECTION') return current;
+  return r.deliverables.fallback_rejection_draft || defaultRejection(r);
+}
+
 function dashboardView(r) {
   return {
     candidate_id: r.candidate_id,
@@ -63,6 +79,7 @@ function dashboardView(r) {
     deliverables: {
       interview_brief: r.deliverables.interview_brief,
       resend_email_draft: r.deliverables.resend_email_draft,
+      rejection_email_draft: rejectionDraft(r),
     },
     status: r.status,
     email_status: r.email_status,
@@ -87,6 +104,7 @@ function conciseView(r) {
     status: r.status,
     email_status: r.email_status,
     email: r.deliverables.resend_email_draft,
+    rejection_email: rejectionDraft(r),
     last_email_event: last,
   };
 }
@@ -105,6 +123,7 @@ app.get('/api/config', (req, res) => {
     llm_provider: llm.provider(),
     resend_configured: Boolean(process.env.RESEND_API_KEY),
     calendly_url: process.env.CALENDLY_URL || null,
+    email_from: process.env.RESEND_FROM || 'Arjun at Kargo <onboarding@resend.dev>',
     rejection_delay_hours: REJECTION_DELAY_HOURS,
     model: llm.activeModel(),
     storage: store.backendName(),
@@ -209,9 +228,14 @@ app.get('/api/audit', async (req, res) => {
 });
 
 app.patch('/api/candidates/:id/email', async (req, res) => {
-  const { subject, body_text, recipient_email } = req.body || {};
+  const { subject, body_text, recipient_email, draft } = req.body || {};
   const rec = await store.update(req.params.id, r => {
-    const d = r.deliverables.resend_email_draft;
+    let d = r.deliverables.resend_email_draft;
+    if (draft === 'rejection' && d.type !== 'DELAYED_REJECTION') {
+      // Edit the pre-written rejection that Pass / Send rejection mail will use.
+      if (!r.deliverables.fallback_rejection_draft) r.deliverables.fallback_rejection_draft = defaultRejection(r);
+      d = r.deliverables.fallback_rejection_draft;
+    }
     if (typeof subject === 'string') d.subject = subject;
     if (typeof body_text === 'string') d.body_text = body_text;
     if (typeof recipient_email === 'string') d.recipient_email = recipient_email.trim();
@@ -259,9 +283,7 @@ app.post('/api/candidates/:id/pass', async (req, res) => {
     if (['SENT', 'SCHEDULED'].includes(r.email_status)) return;
     r.status = 'PASSED_BY_FOUNDER';
     r.founder_decision = { decision: 'PASS', note: (req.body && req.body.note) || '', at: new Date().toISOString() };
-    if (r.deliverables.fallback_rejection_draft) {
-      r.deliverables.resend_email_draft = r.deliverables.fallback_rejection_draft;
-    }
+    r.deliverables.resend_email_draft = rejectionDraft(r);
     r.email_status = 'QUEUED';
   });
   if (!rec) return res.status(404).json({ error: 'Candidate not found.' });

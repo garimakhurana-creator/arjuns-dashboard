@@ -184,6 +184,36 @@
     <div id="detail-body"></div>
   </dialog>
 
+  <dialog id="compose-dialog" class="detail compose" aria-labelledby="compose-title">
+    <form id="compose-form" novalidate>
+      <div class="detail-head">
+        <div>
+          <p class="kicker" id="compose-kicker">Email</p>
+          <h2 id="compose-title">Review email</h2>
+        </div>
+        <button class="icon-btn" id="compose-close" type="button" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+      <div class="compose-body">
+        <div class="compose-from"><span>From</span><b id="compose-from"></b></div>
+        <label>To <input id="compose-to" type="email" autocomplete="off" /></label>
+        <label>Subject <input id="compose-subject" autocomplete="off" /></label>
+        <label>Message <textarea id="compose-message" rows="14"></textarea></label>
+        <p class="compose-note" id="compose-note"></p>
+        <p class="compose-error" id="compose-error" hidden></p>
+      </div>
+      <div class="compose-foot">
+        <span class="compose-saved muted" id="compose-saved"></span>
+        <button type="button" class="ghost" id="compose-cancel">Cancel</button>
+        <button type="button" class="secondary" id="compose-save">Save draft</button>
+        <button type="submit" class="primary" id="compose-send"><span>Send</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
   <template id="row-tpl">
     <div class="qrow">
       <div class="q-ring" aria-hidden="true">
@@ -267,15 +297,15 @@
           <h4>Invite draft</h4>
           <span class="email-state chip"></span>
         </div>
-        <div class="letter">
-          <label>To <input class="e-to" type="email" /></label>
-          <label>Subject <input class="e-subject" /></label>
-          <label>Message <textarea class="e-body" rows="9"></textarea></label>
+        <div class="letter-preview">
+          <p class="lp-row"><span>To</span><b class="lp-to"></b></p>
+          <p class="lp-row"><span>Subject</span><b class="lp-subject"></b></p>
+          <p class="lp-body"></p>
         </div>
         <div class="row end">
           <span class="card-status muted"></span>
           <button class="pass ghost">Pass</button>
-          <button class="send primary">Send invite</button>
+          <button class="send primary">Review &amp; send invite</button>
         </div>
       </div>
     </article>

@@ -482,7 +482,7 @@ ul, ol { margin: 0; padding-left: 18px; }
 dialog.detail {
   width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 40px);
   padding: 0; border: 1px solid var(--line); border-radius: 22px;
-  background: var(--bg); color: var(--ink); box-shadow: var(--shadow-lg); overflow: auto;
+  background: var(--bg); color: var(--ink); box-shadow: var(--shadow-lg); overflow: hidden auto;
 }
 dialog.detail::backdrop { background: rgba(14, 16, 19, .42); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .detail-head {
@@ -533,3 +533,38 @@ td h4 { margin-top: 10px; }
 }
 
 .sr ul li.none { list-style: none; margin-left: -18px; color: var(--muted); font-style: italic; }
+
+/* ---------- Invite preview on cards ---------- */
+.letter-preview {
+  padding: 16px 18px; border-radius: var(--radius-sm);
+  background: var(--panel-2); border: 1px solid var(--line);
+}
+.lp-row { display: flex; gap: 10px; font-size: 13px; margin-bottom: 6px; }
+.lp-row span { width: 58px; flex: none; color: var(--muted); font-size: 12px; }
+.lp-row b { font-weight: 500; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.lp-body {
+  margin-top: 10px; padding-top: 12px; border-top: 1px dashed var(--line-2);
+  white-space: pre-wrap; font: 400 16px/1.55 var(--serif); color: var(--ink-2);
+  max-height: 11.5em; overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
+          mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+
+/* ---------- Email composer ---------- */
+dialog.compose { width: min(720px, calc(100vw - 32px)); }
+.compose-body { padding: 20px 24px 8px; display: grid; gap: 14px; }
+.compose-from {
+  display: flex; gap: 10px; align-items: center; font-size: 13px;
+  padding: 10px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line);
+}
+.compose-from span { color: var(--muted); font-size: 12px; width: 44px; }
+.compose-from b { font-weight: 500; overflow-wrap: anywhere; }
+#compose-message { font: 400 17px/1.6 var(--serif); color: var(--ink); min-height: 280px; }
+.compose-note { font-size: 12.5px; color: var(--muted); }
+.compose-error { font-size: 13px; color: var(--low); background: var(--low-soft); padding: 10px 12px; border-radius: 10px; }
+.compose-foot {
+  position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap;
+  padding: 14px 24px; border-top: 1px solid var(--line);
+  background: color-mix(in oklab, var(--bg) 90%, transparent); backdrop-filter: blur(10px);
+}
+.compose-saved { margin-right: auto; font: 500 12px/1 var(--mono); color: var(--high); }

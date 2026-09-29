@@ -159,12 +159,8 @@ function renderRow(r) {
     reject.textContent = 'Send rejection mail';
     reject.addEventListener('click', async () => {
       reject.disabled = true;
-      try {
-        if (!(await rejectMedium({ ...r, recipient_email: r.email.recipient_email }))) reject.disabled = false;
-      } catch (err) {
-        say(err.message);
-        reject.disabled = false;
-      }
+      composeRejection({ candidate_id: r.candidate_id, candidate_name: r.candidate_name, draft: r.rejection_email }, afterRejectInReview);
+      reject.disabled = false;
     });
     primary.hidden = false;
     primary.textContent = 'Reconsider';
@@ -190,43 +186,133 @@ function renderRow(r) {
   if (r.email_status === 'QUEUED') {
     primary.hidden = false;
     primary.textContent = 'Send rejection mail';
-    primary.addEventListener('click', async () => {
-      const to = r.email.recipient_email;
-      if (!to) return say('No email address found on this CV, so the rejection cannot be sent.');
-      const ok = confirm(`Send a rejection mail to ${r.candidate_name} (${to})?\n\nSubject: ${r.email.subject}\n\nIt will arrive ${config.rejection_delay_hours} hours from now.`);
-      if (!ok) return;
-      primary.disabled = true;
-      say('Sending…');
-      try {
-        await api(`/api/candidates/${r.candidate_id}/send`, { method: 'POST' });
-        await refreshReview();
-      } catch (err) {
-        say(`Couldn't send it: ${err.message}`);
-        primary.disabled = false;
-      }
+    primary.addEventListener('click', () => {
+      composer.open({
+        kind: 'rejection',
+        name: r.candidate_name,
+        draft: r.email,
+        onSave: v => patchDraft(r.candidate_id, v),
+        onSend: async v => {
+          await patchDraft(r.candidate_id, v);
+          await api(`/api/candidates/${r.candidate_id}/send`, { method: 'POST' });
+          await refreshReview();
+        },
+      });
     });
   }
   return node;
 }
 
-// Reject a Medium candidate: swap in their pre-written rejection and send it
-// (it arrives after the usual delay). Returns false if Arjun cancels.
-async function rejectMedium({ candidate_id, candidate_name, recipient_email }) {
-  const ok = confirm(`Reject ${candidate_name} and send them a rejection mail${recipient_email ? ` at ${recipient_email}` : ''}?\n\nIt will arrive ${config.rejection_delay_hours} hours from now.`);
-  if (!ok) return false;
-  await api(`/api/candidates/${candidate_id}/pass`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-  let note;
-  try {
-    const sent = await api(`/api/candidates/${candidate_id}/send`, { method: 'POST' });
-    note = `Rejection mail to ${candidate_name} sent; it arrives ${fmtDate(sent.scheduled_at)}.`;
-  } catch (err) {
-    note = `${candidate_name} moved to Rejection emails, but the mail couldn't be sent yet: ${err.message}`;
+// ---------- Email composer: every email is reviewed (and editable) before it goes out ----------
+const patchDraft = (id, fields, draft) => api(`/api/candidates/${id}/email`, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ ...fields, ...(draft ? { draft } : {}) }),
+});
+
+const composer = (() => {
+  const dialog = $('#compose-dialog');
+  const f = { to: $('#compose-to'), subject: $('#compose-subject'), message: $('#compose-message') };
+  const err = $('#compose-error');
+  const saved = $('#compose-saved');
+  const sendBtn = $('#compose-send');
+  const saveBtn = $('#compose-save');
+  let job = null;
+
+  const values = () => ({ recipient_email: f.to.value.trim(), subject: f.subject.value.trim(), body_text: f.message.value });
+  const showError = m => { err.hidden = !m; err.textContent = m || ''; };
+  const busy = on => { sendBtn.disabled = saveBtn.disabled = on; };
+  const close = () => { if (dialog.open) Motion.dialogOut(dialog, () => dialog.close()); };
+
+  function open({ kind, name, draft, onSend, onSave }) {
+    job = { onSend, onSave };
+    const invite = kind === 'invite';
+    $('#compose-kicker').textContent = invite ? 'Interview invite' : 'Rejection mail';
+    $('#compose-kicker').className = `kicker ${invite ? '' : 'kicker-low'}`;
+    $('#compose-title').textContent = invite ? `Invite ${name}` : `Reject ${name}`;
+    $('#compose-from').textContent = config.email_from || '';
+    f.to.value = draft.recipient_email || '';
+    f.subject.value = draft.subject || '';
+    f.message.value = draft.body_text || '';
+    $('#compose-note').textContent = invite
+      ? 'Sends as soon as you click Send. Edit anything above first; your changes are saved with the candidate.'
+      : `Arrives ${config.rejection_delay_hours} hours after you click Send, so it doesn't feel automated. Edit anything above first.`;
+    sendBtn.querySelector('span').textContent = invite ? 'Send invite' : 'Send rejection mail';
+    saved.textContent = '';
+    showError('');
+    busy(false);
+    dialog.showModal();
+    Motion.dialogIn(dialog);
+    setTimeout(() => f.message.focus(), 60);
   }
-  closeDetail();
+
+  function validate(v) {
+    if (!v.recipient_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.recipient_email)) return 'Enter a valid recipient email address.';
+    if (!v.subject) return 'Add a subject line.';
+    if (!v.body_text.trim()) return 'The message is empty.';
+    return '';
+  }
+
+  $('#compose-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const v = values();
+    const problem = validate(v);
+    if (problem) return showError(problem);
+    busy(true);
+    showError('');
+    try {
+      await job.onSend(v);
+      close();
+    } catch (ex) {
+      showError(`Couldn't send it: ${ex.message}`);
+      busy(false);
+    }
+  });
+  saveBtn.addEventListener('click', async () => {
+    busy(true);
+    try {
+      await job.onSave(values());
+      saved.textContent = 'Draft saved';
+      Motion.pulse(saved);
+    } catch (ex) {
+      showError(ex.message);
+    }
+    busy(false);
+  });
+  $('#compose-cancel').addEventListener('click', close);
+  $('#compose-close').addEventListener('click', close);
+  dialog.addEventListener('cancel', e => { e.preventDefault(); close(); });
+  return { open };
+})();
+
+// Reject a surfaced (High or Medium) candidate with a reviewed rejection mail.
+// Their edits are saved first, so nothing is lost if sending fails.
+function composeRejection({ candidate_id, candidate_name, draft }, after) {
+  composer.open({
+    kind: 'rejection',
+    name: candidate_name,
+    draft,
+    onSave: v => patchDraft(candidate_id, v, 'rejection'),
+    onSend: async v => {
+      await patchDraft(candidate_id, v, 'rejection');
+      await api(`/api/candidates/${candidate_id}/pass`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      let note;
+      try {
+        const sent = await api(`/api/candidates/${candidate_id}/send`, { method: 'POST' });
+        note = `Rejection mail to ${candidate_name} sent; it arrives ${fmtDate(sent.scheduled_at)}.`;
+      } catch (ex) {
+        note = `${candidate_name} moved to Rejection emails with your edits saved, but the mail couldn't be sent yet: ${ex.message}`;
+      }
+      closeDetail();
+      await after(note);
+    },
+  });
+}
+
+async function afterRejectInReview(note) {
   await refreshReview();
   setSectionOpen($('[data-section=rejections]'), true);
   $('#queue-note').textContent = note;
-  return true;
 }
 
 async function reconsider(candidateId, node) {
@@ -290,17 +376,8 @@ function renderCard(c, { detail = false } = {}) {
     const rejectBtn = $('.detail-reject', node);
     rejectBtn.addEventListener('click', async () => {
       rejectBtn.disabled = true;
-      try {
-        const done = await rejectMedium({
-          candidate_id: c.candidate_id,
-          candidate_name: c.candidate_name,
-          recipient_email: c.deliverables.resend_email_draft.recipient_email,
-        });
-        if (!done) rejectBtn.disabled = false;
-      } catch (err) {
-        $('.detail-status', node).textContent = err.message;
-        rejectBtn.disabled = false;
-      }
+      composeRejection({ candidate_id: c.candidate_id, candidate_name: c.candidate_name, draft: c.deliverables.rejection_email_draft }, afterRejectInReview);
+      rejectBtn.disabled = false;
     });
     const btn = $('.detail-reconsider', node);
     btn.addEventListener('click', async () => {
@@ -358,10 +435,9 @@ function renderCard(c, { detail = false } = {}) {
   if (detail) return node;
 
   const d = c.deliverables.resend_email_draft;
-  const to = $('.e-to', node), subj = $('.e-subject', node), body = $('.e-body', node);
-  to.value = d.recipient_email || '';
-  subj.value = d.subject;
-  body.value = d.body_text;
+  $('.lp-to', node).textContent = d.recipient_email || 'No email found on CV';
+  $('.lp-subject', node).textContent = d.subject;
+  $('.lp-body', node).textContent = d.body_text;
 
   const sent = c.email_status === 'SENT';
   const state = $('.email-state', node);
@@ -369,40 +445,30 @@ function renderCard(c, { detail = false } = {}) {
   state.classList.add(sent ? 'ok' : 'draft');
   const sendBtn = $('.send', node), passBtn = $('.pass', node), status = $('.card-status', node);
   if (sent) {
-    [to, subj, body].forEach(el => (el.disabled = true));
     sendBtn.disabled = passBtn.disabled = true;
     const last = c.email_history.filter(h => h.resend_id).pop();
     status.textContent = last ? `Sent ${new Date(last.at).toLocaleString()}` : '';
   }
 
-  const save = () => api(`/api/candidates/${c.candidate_id}/email`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ recipient_email: to.value, subject: subj.value, body_text: body.value }),
+  sendBtn.addEventListener('click', () => {
+    composer.open({
+      kind: 'invite',
+      name: c.candidate_name,
+      draft: d,
+      onSave: async v => { await patchDraft(c.candidate_id, v); Object.assign(d, v); },
+      onSend: async v => {
+        await patchDraft(c.candidate_id, v);
+        await api(`/api/candidates/${c.candidate_id}/send`, { method: 'POST' });
+        await refresh();
+      },
+    });
   });
 
-  sendBtn.addEventListener('click', async () => {
-    if (!to.value) { status.textContent = 'Add a recipient email first.'; return; }
-    sendBtn.disabled = true;
-    status.textContent = 'Sending…';
-    try {
-      await save();
-      await api(`/api/candidates/${c.candidate_id}/send`, { method: 'POST' });
+  passBtn.addEventListener('click', () => {
+    composeRejection({ candidate_id: c.candidate_id, candidate_name: c.candidate_name, draft: c.deliverables.rejection_email_draft }, async note => {
       await refresh();
-    } catch (err) {
-      status.textContent = err.message;
-      sendBtn.disabled = false;
-    }
-  });
-
-  passBtn.addEventListener('click', async () => {
-    if (!confirm(`Pass on ${c.candidate_name}? A polite rejection will be added to the delayed queue.`)) return;
-    try {
-      await api(`/api/candidates/${c.candidate_id}/pass`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      await refresh();
-    } catch (err) {
-      status.textContent = err.message;
-    }
+      status.textContent = note;
+    });
   });
 
   return node;
