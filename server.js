@@ -100,6 +100,7 @@ function conciseView(r) {
     candidate_id: r.candidate_id,
     candidate_name: r.candidate_name,
     selected_role: r.selected_role,
+    evaluated_at: r.evaluation_timestamp,
     category: r.categorization.category,
     match_score_pct: r.scoring.match_score_pct,
     total_risk_score: r.scoring.total_risk_score,

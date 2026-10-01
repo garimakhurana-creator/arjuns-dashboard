@@ -142,6 +142,9 @@
             <button class="ghost small section-toggle" type="button" aria-expanded="true" aria-controls="rejection-list">Close</button>
           </div>
         </div>
+        <div class="filter-bar section-body" data-filter="rejections">
+          <span class="muted filter-showing"></span>
+        </div>
         <div id="rejection-list" class="rows section-body"></div>
       </div>
     </section>
@@ -155,9 +158,12 @@
             <p class="muted section-note">Every evaluated candidate, including auto-rejected ones, with full scoring evidence and reasoning.</p>
           </div>
         </div>
+        <div class="filter-bar" data-filter="audit">
+          <span class="muted filter-showing"></span>
+        </div>
         <div class="table-wrap">
           <table id="audit-table">
-            <thead><tr><th>ID</th><th>Candidate</th><th>Role</th><th>Match</th><th>Risk</th><th>Category</th><th>Status</th><th>Email</th><th></th></tr></thead>
+            <thead><tr><th>ID</th><th>Candidate</th><th>Role</th><th>Evaluated</th><th>Match</th><th>Risk</th><th>Category</th><th>Status</th><th>Email</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>

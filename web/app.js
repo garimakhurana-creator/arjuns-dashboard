@@ -130,7 +130,7 @@ function renderRow(r) {
   $('.q-ring-val', node).textContent = Math.round(r.match_score_pct);
 
   $('.q-name', node).textContent = r.candidate_name;
-  $('.q-meta', node).textContent = `${r.candidate_id} · ${r.selected_role}`;
+  $('.q-meta', node).textContent = `${r.candidate_id} · ${r.selected_role}${r.evaluated_at ? ` · ${fmtDay(r.evaluated_at)}` : ''}`;
   const cat = $('.q-cat', node);
   cat.textContent = r.status === 'PASSED_BY_FOUNDER' ? 'Passed by Arjun' : CAT_LABEL[r.category];
   cat.classList.add(r.category === 'LOW_POTENTIAL' ? 'low' : 'med');
@@ -360,9 +360,8 @@ async function refreshReview() {
   const empty = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
   loaded.medium = medium;
   renderMedium();
-  const rejRows = rejections.map(renderRow);
-  $('#rejection-list').replaceChildren(...(rejRows.length ? rejRows : [empty('No rejection emails.')]));
-  Motion.rows(rejRows, { animate: true });
+  loaded.rejections = rejections;
+  renderRejections();
   const waiting = rejections.filter(r => r.email_status === 'QUEUED').length;
   $('#medium-count').textContent = `(${medium.length})`;
   $('#rejection-count').textContent = `(${rejections.length}${waiting ? ` · ${waiting} not sent` : ''})`;
@@ -404,7 +403,7 @@ function renderCard(c, { detail = false } = {}) {
     });
   }
   $('.name', node).textContent = c.candidate_name;
-  $('.meta', node).textContent = `${c.candidate_id} · ${c.selected_role} · closest to: ${c.categorization.closest_historical_match}`;
+  $('.meta', node).textContent = `${c.candidate_id} · ${c.selected_role} · evaluated ${fmtDay(c.evaluation_timestamp)} · closest to: ${c.categorization.closest_historical_match}`;
   $('.cat', node).textContent = c.shortlisted_by_founder ? 'Medium · reconsidered' : CAT_LABEL[cat];
   $('.match', node).textContent = `${c.scoring.match_score_pct}%`;
   $('.risk', node).textContent = c.scoring.total_risk_score;
@@ -487,27 +486,66 @@ function renderCard(c, { detail = false } = {}) {
   return node;
 }
 
-// Minimum-match filters for the Shortlist and Medium list; remembered per browser.
+// ---------- List views: minimum match, sort and date range; remembered per browser ----------
+const fmtDay = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 const filters = { shortlist: 0, medium: 0 };
-const loaded = { shortlist: [], medium: [] };
+const loaded = { shortlist: [], medium: [], rejections: [], audit: [] };
 
-function applyFilter(name, items, matchOf) {
-  const min = filters[name];
-  const shown = items.filter(x => matchOf(x) >= min);
+const byLatest = date => (x, y) => new Date(date(y)) - new Date(date(x));
+const byMatch = match => (x, y) => match(y) - match(x);
+const LISTS = {
+  shortlist: { noun: 'candidate', date: c => c.evaluation_timestamp, match: c => c.scoring.match_score_pct, sorts: [['match', 'Best match'], ['latest', 'Latest']] },
+  medium: { noun: 'candidate', date: r => r.evaluated_at, match: r => r.match_score_pct, sorts: [['match', 'Best match'], ['latest', 'Latest']] },
+  rejections: { noun: 'email', date: r => r.evaluated_at, match: r => r.match_score_pct, sorts: [['queue', 'Not sent first'], ['latest', 'Latest']] },
+  audit: { noun: 'record', date: r => r.evaluation_timestamp, match: r => r.scoring.match_score_pct, sorts: [['latest', 'Latest'], ['match', 'Best match']] },
+};
+const views = {};
+
+const startOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+function inRange(iso, v) {
+  if (v.range === 'all' || !iso) return v.range === 'all';
+  const t = new Date(iso);
+  if (v.range === 'today') return t >= startOfDay(new Date());
+  if (v.range === '7' || v.range === '30') return t >= new Date(startOfDay(new Date()) - (Number(v.range) - 1) * 864e5);
+  if (v.range === 'custom') {
+    if (v.from && t < startOfDay(v.from + 'T00:00')) return false;
+    if (v.to && t >= new Date(startOfDay(v.to + 'T00:00').getTime() + 864e5)) return false;
+    return true;
+  }
+  return true;
+}
+
+function applyView(name, items) {
+  const L = LISTS[name];
+  const v = views[name];
+  const min = filters[name] || 0;
+  let shown = items.filter(x => L.match(x) >= min && inRange(L.date(x), v));
+  if (v.sort === 'latest') shown = shown.slice().sort(byLatest(L.date));
+  else if (v.sort === 'match') shown = shown.slice().sort(byMatch(L.match));
+  // other sorts ('queue') keep the server's order
+  const filtered = shown.length !== items.length;
   const bar = document.querySelector(`[data-filter=${name}]`);
   $('.filter-showing', bar).textContent = items.length
-    ? (min ? `Showing ${shown.length} of ${items.length}` : `${items.length} candidate${items.length === 1 ? '' : 's'}`)
+    ? (filtered ? `Showing ${shown.length} of ${items.length}` : `${items.length} ${L.noun}${items.length === 1 ? '' : 's'}`)
     : '';
   return shown;
 }
 
+const filterNote = name => {
+  const v = views[name];
+  const parts = [];
+  if (filters[name]) parts.push(`at ${filters[name]}% match or above`);
+  if (v.range !== 'all') parts.push({ today: 'from today', 7: 'in the last 7 days', 30: 'in the last 30 days', custom: 'in that date range' }[v.range]);
+  return parts.join(' ');
+};
+
 function renderShortlist({ animate = true } = {}) {
   const list = $('#candidates');
-  const shown = applyFilter('shortlist', loaded.shortlist, c => c.scoring.match_score_pct);
+  const shown = applyView('shortlist', loaded.shortlist);
   if (!loaded.shortlist.length) {
     list.innerHTML = '<p class="empty muted">No shortlisted candidates yet. Medium candidates you reconsider in the Review queue also appear here.</p>';
   } else if (!shown.length) {
-    list.innerHTML = `<p class="empty muted">No shortlisted candidates at ${filters.shortlist}% match or above.</p>`;
+    list.innerHTML = `<p class="empty muted">No shortlisted candidates ${filterNote('shortlist')}.</p>`;
   } else {
     const cards = shown.map(c => renderCard(c));
     list.replaceChildren(...cards);
@@ -515,18 +553,66 @@ function renderShortlist({ animate = true } = {}) {
   }
 }
 
+const emptyNote = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
+
 function renderMedium({ animate = true } = {}) {
-  const empty = text => Object.assign(document.createElement('p'), { className: 'empty muted', textContent: text });
-  const shown = applyFilter('medium', loaded.medium, r => r.match_score_pct);
-  const rows = shown.map(renderRow);
+  const rows = applyView('medium', loaded.medium).map(renderRow);
   $('#medium-list').replaceChildren(...(rows.length ? rows
-    : [empty(loaded.medium.length ? `No medium-potential candidates at ${filters.medium}% match or above.` : 'No medium-potential candidates waiting.')]));
+    : [emptyNote(loaded.medium.length ? `No medium-potential candidates ${filterNote('medium')}.` : 'No medium-potential candidates waiting.')]));
   Motion.rows(rows, { animate });
 }
 
+function renderRejections({ animate = true } = {}) {
+  const rows = applyView('rejections', loaded.rejections).map(renderRow);
+  $('#rejection-list').replaceChildren(...(rows.length ? rows
+    : [emptyNote(loaded.rejections.length ? `No rejection emails ${filterNote('rejections')}.` : 'No rejection emails.')]));
+  Motion.rows(rows, { animate });
+}
+
+const RENDER = { shortlist: renderShortlist, medium: renderMedium, rejections: () => renderRejections(), audit: () => renderAudit() };
+
+// Builds the sort + date controls into each list's filter bar.
 document.querySelectorAll('.filter-bar').forEach(bar => {
   const name = bar.dataset.filter;
+  const L = LISTS[name];
+  if (!L) return;
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(`kargo.view.${name}`)) || {}; } catch { return {}; } })();
+  views[name] = { sort: L.sorts.some(([k]) => k === saved.sort) ? saved.sort : L.sorts[0][0], range: saved.range || 'all', from: saved.from || '', to: saved.to || '' };
+  const v = views[name];
+  const persist = () => { try { localStorage.setItem(`kargo.view.${name}`, JSON.stringify(v)); } catch {} };
+
+  const controls = document.createElement('div');
+  controls.className = 'view-controls';
+  controls.innerHTML = `
+    <div class="seg seg-sm" role="radiogroup" aria-label="Sort">${L.sorts.map(([k, label]) =>
+      `<label class="seg-opt"><input type="radio" name="sort-${name}" value="${k}"${k === v.sort ? ' checked' : ''} /><span>${label}</span></label>`).join('')}</div>
+    <label class="date-pick">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+      <select class="date-range" aria-label="Date evaluated">
+        <option value="all">All time</option><option value="today">Today</option>
+        <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="custom">Custom range…</option>
+      </select>
+    </label>
+    <span class="custom-range" hidden>
+      <input type="date" class="date-from" aria-label="From date" /><span class="muted">to</span><input type="date" class="date-to" aria-label="To date" />
+    </span>`;
+  bar.insertBefore(controls, $('.filter-showing', bar));
+
+  const select = $('.date-range', controls);
+  const custom = $('.custom-range', controls);
+  const from = $('.date-from', controls);
+  const to = $('.date-to', controls);
+  select.value = v.range; from.value = v.from; to.value = v.to;
+  custom.hidden = v.range !== 'custom';
+  const rerender = () => { persist(); RENDER[name]({ animate: false }); };
+  controls.querySelectorAll(`input[name=sort-${name}]`).forEach(r => r.addEventListener('change', () => { v.sort = r.value; rerender(); }));
+  select.addEventListener('change', () => { v.range = select.value; custom.hidden = v.range !== 'custom'; rerender(); });
+  from.addEventListener('change', () => { v.from = from.value; rerender(); });
+  to.addEventListener('change', () => { v.to = to.value; rerender(); });
+
+  // Minimum-match slider (Shortlist and Medium only).
   const input = $('.filter-min', bar);
+  if (!input) return;
   const out = $('.filter-val', bar);
   try { filters[name] = Number(localStorage.getItem(`kargo.filter.${name}`)) || 0; } catch {}
   const paint = () => { out.textContent = `${filters[name]}%`; input.style.setProperty('--fill', `${filters[name]}%`); };
@@ -536,7 +622,7 @@ document.querySelectorAll('.filter-bar').forEach(bar => {
     filters[name] = Number(input.value);
     paint();
     try { localStorage.setItem(`kargo.filter.${name}`, String(filters[name])); } catch {}
-    (name === 'shortlist' ? renderShortlist : renderMedium)({ animate: false });
+    RENDER[name]({ animate: false });
   });
 });
 
@@ -549,12 +635,18 @@ async function refresh() {
 
 async function refreshAudit() {
   const { records } = await api('/api/audit');
+  loaded.audit = records;
+  renderAudit();
+}
+
+function renderAudit() {
   const tbody = $('#audit-table tbody');
   tbody.replaceChildren();
+  const records = applyView('audit', loaded.audit);
   for (const r of records) {
     const tr = document.createElement('tr');
     const cells = [
-      r.candidate_id, r.candidate_name, r.selected_role, `${r.scoring.match_score_pct}%`,
+      r.candidate_id, r.candidate_name, r.selected_role, fmtDay(r.evaluation_timestamp), `${r.scoring.match_score_pct}%`,
       r.scoring.total_risk_score, CAT_LABEL[r.categorization.category] + (r.rubric_version === config.rubric_version ? "" : " (old rubric)"), r.status, r.email_status,
     ];
     for (const v of cells) {
@@ -562,7 +654,7 @@ async function refreshAudit() {
       td.textContent = v;
       tr.appendChild(td);
     }
-    tr.children[5].className = `cat-${r.categorization.category}`;
+    tr.children[6].className = `cat-${r.categorization.category}`;
     const td = document.createElement('td');
     const btn = document.createElement('button');
     btn.className = 'ghost small';
@@ -582,7 +674,7 @@ async function refreshAudit() {
     btn.addEventListener('click', () => (detail.hidden = !detail.hidden));
     tbody.append(tr, detail);
   }
-  if (!records.length) tbody.innerHTML = '<tr><td colspan="9" class="muted">No evaluations yet.</td></tr>';
+  if (!records.length) tbody.innerHTML = `<tr><td colspan="10" class="muted">${loaded.audit.length ? `No records ${filterNote('audit')}.` : 'No evaluations yet.'}</td></tr>`;
   Motion.tableRows(tbody);
 }
 
