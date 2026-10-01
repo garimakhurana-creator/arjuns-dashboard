@@ -258,7 +258,9 @@ const composer = (() => {
   }
 
   function validate(v) {
-    if (!v.recipient_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.recipient_email)) return 'Enter a valid recipient email address.';
+    // Check the address shown in To (the test inbox in test mode).
+    const to = f.to.value.trim();
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return 'Enter a valid recipient email address.';
     if (!v.subject) return 'Add a subject line.';
     if (!v.body_text.trim()) return 'The message is empty.';
     return '';
