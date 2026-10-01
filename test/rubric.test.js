@@ -163,3 +163,12 @@ test('test mode delivers every email to EMAIL_OVERRIDE_TO and notes the real rec
     process.env.EMAIL_OVERRIDE_TO = saved.over || '';
   }
 });
+
+test('OCR-split names and bracketed filenames are still redacted', () => {
+  const { extractAndRedact, nameFromFilename } = require('../lib/pii');
+  assert.strictEqual(nameFromFilename('Garima Khurana _ Resume (2025).pdf'), 'Garima Khurana');
+  const { pii, redactedText } = extractAndRedact('Mobile: 9999 | Ga rima Kh urana\nEducation\nGarima led a team.', { filename: 'Garima Khurana _ Resume (2025).pdf' });
+  assert.strictEqual(pii.name, 'Garima Khurana');
+  assert.ok(!/ga\s?rima|kh\s?urana/i.test(redactedText), redactedText);
+  assert.ok(redactedText.includes('Education'));
+});
