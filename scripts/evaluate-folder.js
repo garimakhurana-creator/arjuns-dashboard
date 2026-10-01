@@ -133,7 +133,7 @@ async function main() {
       record.source_file = job.file;
       record.audit_log.role_source = job.source;
       if (job.group) record.evaluation_group = job.group;
-      await store.insert(record);
+      await store.insertWithFreshId(record);
       results.push({ ...job, category: record.categorization.category, match: record.scoring.match_score_pct, risk: record.scoring.total_risk_score });
       console.log(`  ✓ ${job.candidateId} ${job.role.padEnd(3)} ${job.file.padEnd(28)} ${record.categorization.category.padEnd(16)} ${record.scoring.match_score_pct}% / risk ${record.scoring.total_risk_score}  (${Math.round((Date.now() - t) / 1000)}s)`);
     } catch (err) {

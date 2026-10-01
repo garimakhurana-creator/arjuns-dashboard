@@ -153,7 +153,7 @@ app.post('/api/candidates', upload.array('cv'), async (req, res) => {
         calendlyUrl: process.env.CALENDLY_URL,
       });
       record.source_file = file.originalname;
-      await store.insert(record);
+      await store.insertWithFreshId(record);
       const surfaced = record.categorization.surfaced_to_arjun_dashboard;
 
       // Low potential: no founder approval needed. The rejection is scheduled

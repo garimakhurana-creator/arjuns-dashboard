@@ -172,3 +172,23 @@ test('OCR-split names and bracketed filenames are still redacted', () => {
   assert.ok(!/ga\s?rima|kh\s?urana/i.test(redactedText), redactedText);
   assert.ok(redactedText.includes('Education'));
 });
+
+
+test('a clashing candidate ID is replaced with the next free one', async () => {
+  const store = require('../lib/store');
+  const taken = new Set(['KARGO-2026-001', 'KARGO-2026-002']);
+  const fake = {
+    async insert(r) {
+      if (taken.has(r.candidate_id)) { const e = new Error('duplicate key value violates unique constraint'); e.code = '23505'; throw e; }
+      taken.add(r.candidate_id); return r;
+    },
+    async candidateIds() { return [...taken]; },
+  };
+  const restore = store._useBackend(fake);
+  try {
+    const rec = { candidate_id: 'KARGO-2026-002' };
+    await store.insertWithFreshId(rec);
+    assert.strictEqual(rec.candidate_id, 'KARGO-2026-003');
+    assert.ok(taken.has('KARGO-2026-003'));
+  } finally { restore(); }
+});
