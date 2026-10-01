@@ -231,6 +231,11 @@ const composer = (() => {
     $('#compose-kicker').className = `kicker ${invite ? '' : 'kicker-low'}`;
     $('#compose-title').textContent = invite ? `Invite ${name}` : `Reject ${name}`;
     $('#compose-from').textContent = config.email_from || '';
+    const test = $('#compose-test');
+    test.hidden = !config.email_override_to;
+    test.textContent = config.email_override_to
+      ? `Test mode: this email will be delivered to ${config.email_override_to}, not to the address below. The candidate's address is kept on their record.`
+      : '';
     f.to.value = draft.recipient_email || '';
     f.subject.value = draft.subject || '';
     f.message.value = draft.body_text || '';

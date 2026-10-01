@@ -139,3 +139,27 @@ test('headings and job titles are never taken as the candidate name', () => {
   assert.strictEqual(nameFromFilename('spm_16_siddharth_rao.pdf'), 'Siddharth Rao');
   assert.strictEqual(nameFromFilename('scan0001.pdf'), null);
 });
+
+test('test mode delivers every email to EMAIL_OVERRIDE_TO and notes the real recipient', async () => {
+  const { sendEmail } = require('../lib/resend');
+  const sent = [];
+  const realFetch = global.fetch;
+  const saved = { key: process.env.RESEND_API_KEY, over: process.env.EMAIL_OVERRIDE_TO };
+  global.fetch = async (url, opts) => { sent.push(JSON.parse(opts.body)); return { ok: true, json: async () => ({ id: 'x' }) }; };
+  try {
+    process.env.RESEND_API_KEY = 're_test';
+    process.env.EMAIL_OVERRIDE_TO = 'me@example.com';
+    const r = await sendEmail({ to: 'candidate@example.com', subject: 'Hi', text: 'Body' });
+    assert.deepStrictEqual(sent[0].to, ['me@example.com']);
+    assert.ok(sent[0].text.startsWith('[Test mode: this email would have gone to candidate@example.com]'));
+    assert.strictEqual(r.delivered_to, 'me@example.com');
+    process.env.EMAIL_OVERRIDE_TO = '';
+    await sendEmail({ to: 'candidate@example.com', subject: 'Hi', text: 'Body' });
+    assert.deepStrictEqual(sent[1].to, ['candidate@example.com']);
+    assert.strictEqual(sent[1].text, 'Body');
+  } finally {
+    global.fetch = realFetch;
+    process.env.RESEND_API_KEY = saved.key || '';
+    process.env.EMAIL_OVERRIDE_TO = saved.over || '';
+  }
+});

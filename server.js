@@ -8,7 +8,7 @@ const { pdfToText } = require('./lib/pdf');
 const { docxToText } = require('./lib/docx');
 const store = require('./lib/store');
 const { evaluateCv } = require('./lib/pipeline');
-const { sendEmail } = require('./lib/resend');
+const { sendEmail, overrideTo } = require('./lib/resend');
 const { deliverEmail } = require('./lib/dispatch');
 const llm = require('./lib/llm');
 const { requirePassword } = require('./lib/auth');
@@ -124,6 +124,7 @@ app.get('/api/config', (req, res) => {
     resend_configured: Boolean(process.env.RESEND_API_KEY),
     calendly_url: process.env.CALENDLY_URL || null,
     email_from: process.env.RESEND_FROM || 'Arjun at Kargo <onboarding@resend.dev>',
+    email_override_to: overrideTo() || null,
     rejection_delay_hours: REJECTION_DELAY_HOURS,
     model: llm.activeModel(),
     storage: store.backendName(),
@@ -304,7 +305,7 @@ app.post('/api/rejections/send-batch', async (req, res) => {
       const result = await sendEmail({ to: d.recipient_email, subject: d.subject, text: d.body_text, scheduledAt });
       await store.update(r.candidate_id, x => {
         x.email_status = 'SCHEDULED';
-        x.email_history.push({ type: d.type, resend_id: result.id, scheduled_at: scheduledAt, at: new Date().toISOString() });
+        x.email_history.push({ type: d.type, resend_id: result.id, delivered_to: result.delivered_to, scheduled_at: scheduledAt, at: new Date().toISOString() });
       });
       scheduled++;
     } catch (err) {
