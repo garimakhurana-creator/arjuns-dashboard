@@ -248,7 +248,9 @@ const composer = (() => {
     busy(false);
     dialog.showModal();
     Motion.dialogIn(dialog);
-    setTimeout(() => f.message.focus(), 60);
+    // Start at the top so From / To are in view; focus without scrolling away.
+    dialog.scrollTop = 0;
+    setTimeout(() => { f.message.focus({ preventScroll: true }); dialog.scrollTop = 0; }, 60);
   }
 
   function validate(v) {
