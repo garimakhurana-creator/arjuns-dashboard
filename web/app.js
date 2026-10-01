@@ -219,7 +219,14 @@ const composer = (() => {
   const saveBtn = $('#compose-save');
   let job = null;
 
-  const values = () => ({ recipient_email: f.to.value.trim(), subject: f.subject.value.trim(), body_text: f.message.value });
+  // In test mode the To field shows the test inbox (where mail really goes) and
+  // is read-only; the candidate's own address is left untouched on their record.
+  const testInbox = () => config.email_override_to || '';
+  const values = () => ({
+    ...(testInbox() ? {} : { recipient_email: f.to.value.trim() }),
+    subject: f.subject.value.trim(),
+    body_text: f.message.value,
+  });
   const showError = m => { err.hidden = !m; err.textContent = m || ''; };
   const busy = on => { sendBtn.disabled = saveBtn.disabled = on; };
   const close = () => { if (dialog.open) Motion.dialogOut(dialog, () => dialog.close()); };
@@ -231,12 +238,9 @@ const composer = (() => {
     $('#compose-kicker').className = `kicker ${invite ? '' : 'kicker-low'}`;
     $('#compose-title').textContent = invite ? `Invite ${name}` : `Reject ${name}`;
     $('#compose-from').textContent = config.email_from || '';
-    const test = $('#compose-test');
-    test.hidden = !config.email_override_to;
-    test.textContent = config.email_override_to
-      ? `Test mode: this email will be delivered to ${config.email_override_to}, not to the address below. The candidate's address is kept on their record.`
-      : '';
-    f.to.value = draft.recipient_email || '';
+    f.to.value = testInbox() || draft.recipient_email || '';
+    f.to.readOnly = Boolean(testInbox());
+    f.to.title = testInbox() ? 'Test mode: every email goes to this inbox' : '';
     f.subject.value = draft.subject || '';
     f.message.value = draft.body_text || '';
     $('#compose-note').textContent = invite
@@ -442,7 +446,7 @@ function renderCard(c, { detail = false } = {}) {
   if (detail) return node;
 
   const d = c.deliverables.resend_email_draft;
-  $('.lp-to', node).textContent = d.recipient_email || 'No email found on CV';
+  $('.lp-to', node).textContent = config.email_override_to || d.recipient_email || 'No email found on CV';
   $('.lp-subject', node).textContent = d.subject;
   $('.lp-body', node).textContent = d.body_text;
 

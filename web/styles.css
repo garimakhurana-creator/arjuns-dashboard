@@ -569,8 +569,4 @@ dialog.compose { width: min(720px, calc(100vw - 32px)); }
 }
 .compose-saved { margin-right: auto; font: 500 12px/1 var(--mono); color: var(--high); }
 
-.compose-test {
-  font-size: 13px; line-height: 1.5; padding: 10px 12px; border-radius: 10px;
-  color: var(--accent); background: var(--accent-soft);
-  border: 1px solid color-mix(in oklab, var(--accent) 25%, transparent);
-}
+#compose-to[readonly] { color: var(--ink-2); background: var(--bg-2); cursor: default; }
