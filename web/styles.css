@@ -590,3 +590,14 @@ dialog.compose { width: min(720px, calc(100vw - 32px)); }
 .custom-range { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .custom-range input { width: auto; padding: 6px 10px; font-size: 12.5px; border-radius: 999px; }
 .section-head .filter-bar { justify-content: flex-end; }
+
+/* ---------- New tag, upload result links, jump highlight ---------- */
+.chip.new-tag { background: var(--accent-soft); color: var(--accent); }
+.results li { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.results .view-btn { padding: 6px 12px; font-size: 12px; flex: none; }
+@keyframes kargo-flash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  20%, 60% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 55%, transparent); }
+}
+.flash { animation: kargo-flash 2.4s ease-out 1; border-radius: 14px; }
+.qrow.flash { background: var(--accent-soft); transition: background 2s; }

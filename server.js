@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
 
 require('./lib/env').loadDotEnv();
 
@@ -140,6 +141,13 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Which list a candidate currently appears in, so the page can jump to them.
+function whereShown(r) {
+  if (r.deliverables.resend_email_draft.type === 'DELAYED_REJECTION') return 'rejections';
+  if (r.categorization.category === 'HIGH_POTENTIAL' || r.shortlisted_by_founder) return 'shortlist';
+  return 'medium';
+}
+
 app.post('/api/candidates', upload.array('cv'), async (req, res) => {
   const role = String(req.body.role || '').toUpperCase();
   if (!['PM', 'SPM'].includes(role)) return res.status(400).json({ error: 'Select a role: PM or SPM.' });
@@ -148,9 +156,26 @@ app.post('/api/candidates', upload.array('cv'), async (req, res) => {
   // Name/email overrides only make sense for a single upload.
   const overrides = req.files.length === 1 ? { name: req.body.name, email: req.body.email } : {};
   const results = [];
+  const existing = await currentRecords();
 
   for (const file of req.files) {
     try {
+      // The exact same file for the same role was already evaluated: don't
+      // score it again or send a second email; point to the existing record.
+      const sourceHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+      const dup = existing.find(r => r.source_hash === sourceHash && r.role_code === role);
+      if (dup) {
+        results.push({
+          file: file.originalname,
+          duplicate: true,
+          candidate_id: dup.candidate_id,
+          candidate_name: dup.candidate_name,
+          category: dup.categorization.category,
+          where: whereShown(dup),
+          evaluated_at: dup.evaluation_timestamp,
+        });
+        continue;
+      }
       const rawText = await fileToText(file);
       const record = await evaluateCv({
         rawText,
@@ -160,7 +185,9 @@ app.post('/api/candidates', upload.array('cv'), async (req, res) => {
         calendlyUrl: process.env.CALENDLY_URL,
       });
       record.source_file = file.originalname;
+      record.source_hash = sourceHash;
       await store.insertWithFreshId(record);
+      existing.push(record);
       const surfaced = record.categorization.surfaced_to_arjun_dashboard;
 
       // Low potential: no founder approval needed. The rejection is scheduled
@@ -180,8 +207,9 @@ app.post('/api/candidates', upload.array('cv'), async (req, res) => {
         category: record.categorization.category,
         surfaced,
         rejection_email,
-        // Low-potential outcomes are acknowledged but not detailed on the dashboard.
-        candidate_name: surfaced ? record.candidate_name : undefined,
+        candidate_name: record.candidate_name,
+        where: whereShown(record),
+        evaluated_at: record.evaluation_timestamp,
       });
     } catch (err) {
       console.error(`Evaluation failed for ${file.originalname}:`, err);

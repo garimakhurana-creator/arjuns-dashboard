@@ -126,7 +126,9 @@ function renderRow(r) {
   const node = $('#row-tpl').content.firstElementChild.cloneNode(true);
   const isMedium = r.email.type === 'INTERVIEW_INVITE';
   node.dataset.match = r.match_score_pct;
+  node.dataset.id = r.candidate_id;
   node.classList.toggle('is-low', r.category === 'LOW_POTENTIAL');
+  if (isNew(r.evaluated_at)) $('.q-top', node).appendChild(newTag());
   $('.q-ring-val', node).textContent = Math.round(r.match_score_pct);
 
   $('.q-name', node).textContent = r.candidate_name;
@@ -376,6 +378,8 @@ function renderCard(c, { detail = false } = {}) {
   const cat = c.categorization.category;
   node.classList.add(cat === 'HIGH_POTENTIAL' ? 'high' : 'medium');
   node.dataset.match = c.scoring.match_score_pct;
+  node.dataset.id = c.candidate_id;
+  if (!detail && isNew(c.evaluation_timestamp)) $('.scores', node).prepend(newTag());
   $('.avatar', node).textContent = c.candidate_name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
   $('.ring', node).setAttribute('aria-label', `${c.scoring.match_score_pct}% match`);
   if (detail) {
@@ -486,6 +490,36 @@ function renderCard(c, { detail = false } = {}) {
   return node;
 }
 
+// ---------- "New" tag and jumping to a candidate ----------
+const isNew = iso => iso && Date.now() - new Date(iso).getTime() < 24 * 3600 * 1000;
+const newTag = () => Object.assign(document.createElement('span'), { className: 'chip new-tag', textContent: 'New' });
+
+// Shows a candidate wherever they landed: switches tab, clears filters that
+// would hide them, opens the section, scrolls to them and highlights them.
+async function goToCandidate(id, where) {
+  const view = where === 'shortlist' ? 'dashboard' : 'review';
+  await switchView(document.querySelector(`.tab[data-view=${view}]`));
+  const scope = view === 'dashboard' ? '#candidates' : (where === 'medium' ? '#medium-list' : '#rejection-list');
+  const find = () => document.querySelector(`${scope} [data-id="${id}"]`) || document.querySelector(`${scope}[data-id="${id}"]`);
+  if (!find() && views[where]) {
+    // A filter is hiding them: reset this list's filters and redraw.
+    filters[where] = 0;
+    views[where].range = 'all';
+    const bar = document.querySelector(`[data-filter=${where}]`);
+    const slider = bar && $('.filter-min', bar);
+    if (slider) { slider.value = 0; slider.dispatchEvent(new Event('input')); }
+    if (bar) { const sel = $('.date-range', bar); sel.value = 'all'; sel.dispatchEvent(new Event('change')); }
+  }
+  const panel = document.querySelector(`[data-section=${where}]`);
+  if (panel && panel.classList.contains('closed')) setSectionOpen(panel, true, { instant: true });
+  const el = find();
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+}
+
 // ---------- List views: minimum match, sort and date range; remembered per browser ----------
 const fmtDay = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 const filters = { shortlist: 0, medium: 0 };
@@ -496,7 +530,7 @@ const byMatch = match => (x, y) => match(y) - match(x);
 const LISTS = {
   shortlist: { noun: 'candidate', date: c => c.evaluation_timestamp, match: c => c.scoring.match_score_pct, sorts: [['match', 'Best match'], ['latest', 'Latest']] },
   medium: { noun: 'candidate', date: r => r.evaluated_at, match: r => r.match_score_pct, sorts: [['match', 'Best match'], ['latest', 'Latest']] },
-  rejections: { noun: 'email', date: r => r.evaluated_at, match: r => r.match_score_pct, sorts: [['queue', 'Not sent first'], ['latest', 'Latest']] },
+  rejections: { noun: 'email', date: r => r.evaluated_at, match: r => r.match_score_pct, sorts: [['latest', 'Latest'], ['queue', 'Not sent first']] },
   audit: { noun: 'record', date: r => r.evaluation_timestamp, match: r => r.scoring.match_score_pct, sorts: [['latest', 'Latest'], ['match', 'Best match']] },
 };
 const views = {};
@@ -576,10 +610,10 @@ document.querySelectorAll('.filter-bar').forEach(bar => {
   const name = bar.dataset.filter;
   const L = LISTS[name];
   if (!L) return;
-  const saved = (() => { try { return JSON.parse(localStorage.getItem(`kargo.view.${name}`)) || {}; } catch { return {}; } })();
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(`kargo.view2.${name}`)) || {}; } catch { return {}; } })();
   views[name] = { sort: L.sorts.some(([k]) => k === saved.sort) ? saved.sort : L.sorts[0][0], range: saved.range || 'all', from: saved.from || '', to: saved.to || '' };
   const v = views[name];
-  const persist = () => { try { localStorage.setItem(`kargo.view.${name}`, JSON.stringify(v)); } catch {} };
+  const persist = () => { try { localStorage.setItem(`kargo.view2.${name}`, JSON.stringify(v)); } catch {} };
 
   const controls = document.createElement('div');
   controls.className = 'view-controls';
@@ -690,14 +724,23 @@ $('#upload').addEventListener('submit', async e => {
     const { results } = await api('/api/candidates', { method: 'POST', body: new FormData(form) });
     $('#upload-results').replaceChildren(...results.map(r => {
       if (r.error) return Object.assign(li(`${r.file}: failed (${r.error})`), { className: 'err' });
+      const withView = (item, label = 'View') => {
+        const btn = Object.assign(document.createElement('button'), { type: 'button', className: 'ghost small view-btn', textContent: `${label} →` });
+        btn.addEventListener('click', () => goToCandidate(r.candidate_id, r.where));
+        item.appendChild(btn);
+        return item;
+      };
+      if (r.duplicate) {
+        return withView(Object.assign(li(`${r.file}: already evaluated on ${fmtDay(r.evaluated_at)} as ${r.candidate_name} (${CAT_LABEL[r.category]}). Not scored again and no new email sent.`), { className: 'muted' }));
+      }
       const msg = {
         HIGH_POTENTIAL: `${r.file} → ${r.candidate_name}: High potential, added to shortlist`,
         MEDIUM_POTENTIAL: `${r.file} → ${r.candidate_name}: Medium potential, added to Review queue`,
         LOW_POTENTIAL: r.rejection_email && r.rejection_email.scheduled
-          ? `${r.file} → ${r.candidate_id}: auto-rejected, rejection email scheduled`
-          : `${r.file} → ${r.candidate_id}: auto-rejected, rejection email NOT sent (${r.rejection_email ? r.rejection_email.error : 'unknown error'}). Retry from Review queue`,
+          ? `${r.file} → ${r.candidate_name}: Low potential, auto-rejected; rejection email scheduled`
+          : `${r.file} → ${r.candidate_name}: Low potential, auto-rejected; rejection email not sent yet (${r.rejection_email ? r.rejection_email.error : 'unknown error'})`,
       }[r.category];
-      return Object.assign(li(msg), { className: r.category === 'LOW_POTENTIAL' ? 'muted' : 'ok' });
+      return withView(Object.assign(li(msg), { className: r.category === 'LOW_POTENTIAL' ? 'muted' : 'ok' }));
     }));
     form.reset();
     await refresh();
@@ -755,8 +798,7 @@ $('#batch-btn').addEventListener('click', async () => {
   }
 });
 
-document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
-  if (tab.classList.contains('active')) return;
+function switchView(tab) {
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t === tab);
     t.setAttribute('aria-selected', String(t === tab));
@@ -765,7 +807,10 @@ document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', (
   const view = tab.dataset.view;
   for (const v of ['dashboard', 'review', 'audit']) $(`#view-${v}`).hidden = view !== v;
   Motion.view($(`#view-${view}`));
-  ({ dashboard: refresh, review: refreshReview, audit: refreshAudit })[view]();
+  return ({ dashboard: refresh, review: refreshReview, audit: refreshAudit })[view]();
+}
+document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+  if (!tab.classList.contains('active')) switchView(tab);
 }));
 const placeIndicator = () => Motion.indicator($('.tab.active'), true);
 window.addEventListener('resize', placeIndicator);
