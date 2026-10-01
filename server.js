@@ -9,7 +9,7 @@ const { pdfToText } = require('./lib/pdf');
 const { docxToText } = require('./lib/docx');
 const store = require('./lib/store');
 const { evaluateCv } = require('./lib/pipeline');
-const { sendEmail, overrideTo } = require('./lib/resend');
+const { sendEmail, overrideTo, cancelEmail } = require('./lib/resend');
 const { deliverEmail } = require('./lib/dispatch');
 const llm = require('./lib/llm');
 const { requirePassword } = require('./lib/auth');
@@ -112,6 +112,7 @@ function conciseView(r) {
     email_status: r.email_status,
     email: r.deliverables.resend_email_draft,
     rejection_email: rejectionDraft(r),
+    can_undo: r.status === 'PASSED_BY_FOUNDER' && r.email_status !== 'SENT',
     last_email_event: last,
   };
 }
@@ -314,11 +315,65 @@ app.post('/api/candidates/:id/reconsider', async (req, res) => {
   res.json({ ok: true });
 });
 
+// A plain invite, used only when undoing a rejection made before invite drafts
+// were kept (the original wording was overwritten by the rejection).
+function defaultInvite(r) {
+  const first = (r.candidate_name || 'there').split(/\s+/)[0];
+  const link = process.env.CALENDLY_URL ? `\n\nYou can pick a time that suits you here: ${process.env.CALENDLY_URL}` : '';
+  return {
+    type: 'INTERVIEW_INVITE',
+    recipient_email: r.deliverables.resend_email_draft.recipient_email,
+    subject: 'Interview with Kargo',
+    body_text: `Hi ${first},\n\nThank you for applying to Kargo. I enjoyed reading about your background and would love to learn more in a 45-minute conversation.${link}\n\nLooking forward to it.\n\nArjun Mehta\nFounder, Kargo`,
+  };
+}
+
+// Undo Arjun's last decision on a surfaced candidate: un-reconsider a Medium
+// candidate, or take back a rejection whose email has not been delivered yet
+// (a scheduled one is cancelled in Resend first).
+app.post('/api/candidates/:id/undo', async (req, res) => {
+  const rec = await store.get(req.params.id);
+  if (!rec) return res.status(404).json({ error: 'Candidate not found.' });
+
+  if (rec.status === 'PASSED_BY_FOUNDER') {
+    if (rec.email_status === 'SENT') return res.status(409).json({ error: 'The rejection email has already been sent, so this cannot be undone.' });
+    if (rec.email_status === 'SCHEDULED') {
+      const last = [...rec.email_history].reverse().find(h => h.resend_id && h.scheduled_at);
+      if (!last) return res.status(409).json({ error: 'Could not find the scheduled email to cancel.' });
+      if (new Date(last.scheduled_at) <= new Date()) return res.status(409).json({ error: 'The rejection email has already gone out, so this cannot be undone.' });
+      try {
+        await cancelEmail(last.resend_id);
+      } catch (err) {
+        return res.status(502).json({ error: `Couldn't cancel the scheduled email: ${err.message}` });
+      }
+    }
+  } else if (!(rec.shortlisted_by_founder && rec.status === 'AWAITING_FOUNDER')) {
+    return res.status(409).json({ error: 'There is nothing to undo for this candidate.' });
+  }
+
+  const updated = await store.update(rec.candidate_id, r => {
+    const at = new Date().toISOString();
+    (r.decision_history = r.decision_history || []).push({ ...(r.founder_decision || {}), undone_at: at });
+    if (r.status === 'PASSED_BY_FOUNDER') {
+      if (r.email_status === 'SCHEDULED') r.email_history.push({ type: 'DELAYED_REJECTION', cancelled: true, at });
+      // Keep the (possibly edited) rejection for next time; restore the invite.
+      r.deliverables.fallback_rejection_draft = r.deliverables.resend_email_draft;
+      r.deliverables.resend_email_draft = r.deliverables.invite_draft || defaultInvite(r);
+      r.status = 'AWAITING_FOUNDER';
+      r.email_status = 'DRAFT';
+    }
+    r.shortlisted_by_founder = false;
+    delete r.founder_decision;
+  });
+  res.json({ ok: true, where: whereShown(updated), candidate_id: updated.candidate_id });
+});
+
 app.post('/api/candidates/:id/pass', async (req, res) => {
   const rec = await store.update(req.params.id, r => {
     if (['SENT', 'SCHEDULED'].includes(r.email_status)) return;
     r.status = 'PASSED_BY_FOUNDER';
     r.founder_decision = { decision: 'PASS', note: (req.body && req.body.note) || '', at: new Date().toISOString() };
+    if (r.deliverables.resend_email_draft.type === 'INTERVIEW_INVITE') r.deliverables.invite_draft = r.deliverables.resend_email_draft;
     r.deliverables.resend_email_draft = rejectionDraft(r);
     r.email_status = 'QUEUED';
   });

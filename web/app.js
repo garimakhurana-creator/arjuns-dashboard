@@ -185,6 +185,24 @@ function renderRow(r) {
   state.textContent = stateText;
   state.classList.add(stateCls);
 
+  if (r.can_undo) {
+    secondary.hidden = false;
+    secondary.textContent = 'Undo';
+    secondary.title = r.email_status === 'SCHEDULED'
+      ? 'Cancel the scheduled email and move them back'
+      : 'Move them back to where they were';
+    secondary.addEventListener('click', async () => {
+      secondary.disabled = true;
+      say(r.email_status === 'SCHEDULED' ? 'Cancelling the scheduled email…' : '');
+      try {
+        await undoDecision(r.candidate_id, node);
+      } catch (err) {
+        say(err.message);
+        secondary.disabled = false;
+      }
+    });
+  }
+
   if (r.email_status === 'QUEUED') {
     primary.hidden = false;
     primary.textContent = 'Send rejection mail';
@@ -328,6 +346,14 @@ async function afterRejectInReview(note) {
   await refreshReview();
   setSectionOpen($('[data-section=rejections]'), true);
   $('#queue-note').textContent = note;
+}
+
+// Undo Arjun's last decision (un-reconsider, or take back an unsent rejection).
+async function undoDecision(candidateId, node) {
+  const r = await api(`/api/candidates/${candidateId}/undo`, { method: 'POST' });
+  await Motion.leave(node);
+  await goToCandidate(r.candidate_id, r.where);
+  return r;
 }
 
 async function reconsider(candidateId, node) {
@@ -479,6 +505,20 @@ function renderCard(c, { detail = false } = {}) {
       },
     });
   });
+
+  if (c.shortlisted_by_founder && !sent) {
+    const back = Object.assign(document.createElement('button'), { type: 'button', className: 'ghost', textContent: 'Move back to Medium' });
+    passBtn.before(back);
+    back.addEventListener('click', async () => {
+      back.disabled = true;
+      try {
+        await undoDecision(c.candidate_id, node);
+      } catch (err) {
+        status.textContent = err.message;
+        back.disabled = false;
+      }
+    });
+  }
 
   passBtn.addEventListener('click', () => {
     composeRejection({ candidate_id: c.candidate_id, candidate_name: c.candidate_name, draft: c.deliverables.rejection_email_draft }, async note => {
