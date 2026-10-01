@@ -34,7 +34,12 @@ app.use('/api', (req, res, next) => {
 });
 app.use(express.json({ limit: '1mb' }));
 // Not named public/: Vercel would serve that from its CDN, bypassing the password.
-app.use(express.static(path.join(__dirname, 'web')));
+// The build the page is running, so open tabs can tell when a newer one is live.
+const BUILD_ID = process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_DEPLOYMENT_ID || `local-${Date.now()}`;
+// Always revalidate page files so a refresh never shows an old version.
+app.use(express.static(path.join(__dirname, 'web'), {
+  setHeaders: res => res.setHeader('Cache-Control', 'no-cache'),
+}));
 
 async function fileToText(file) {
   const name = file.originalname.toLowerCase();
@@ -129,6 +134,7 @@ app.get('/api/config', (req, res) => {
     model: llm.activeModel(),
     storage: store.backendName(),
     rubric_version: RUBRIC_VERSION,
+    build_id: BUILD_ID,
     max_files_per_upload: MAX_FILES,
   });
 });

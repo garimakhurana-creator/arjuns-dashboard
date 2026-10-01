@@ -706,6 +706,25 @@ window.addEventListener('resize', placeIndicator);
   Motion.intro();
 })();
 
+// ---------- Stay on the latest version ----------
+(() => {
+  let reloading = false;
+  const busy = () => $('#compose-dialog').open || $('#detail-dialog').open || $('#upload-btn').disabled;
+  async function check() {
+    if (reloading || !config.build_id || document.hidden) return;
+    try {
+      const latest = await (await fetch('/api/config', { cache: 'no-store' })).json();
+      if (latest.build_id && latest.build_id !== config.build_id) {
+        if (busy()) return; // try again next time; never lose an open draft
+        reloading = true;
+        location.reload();
+      }
+    } catch {}
+  }
+  setInterval(check, 3 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+})();
+
 loadConfig().then(refresh).catch(err => {
   $('#candidates').textContent = err.message;
 });
